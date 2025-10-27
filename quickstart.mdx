@@ -1,80 +1,296 @@
 ---
-title: "Quickstart"
-description: "Start building awesome documentation in minutes"
+title: "Quick Start"
+description: "5分钟快速开始使用 Arcade CI/CD 平台"
 ---
 
-## Get started in three steps
+# 快速开始
 
-Get your documentation site running locally and make your first customization.
+本指南将帮助您在 5 分钟内快速体验 Arcade CI/CD 平台。
 
-### Step 1: Set up your local environment
+## 前置要求
 
-<AccordionGroup>
-  <Accordion icon="copy" title="Clone your docs locally">
-    During the onboarding process, you created a GitHub repository with your docs content if you didn't already have one. You can find a link to this repository in your [dashboard](https://dashboard.mintlify.com).
-    
-    To clone the repository locally so that you can make and preview changes to your docs, follow the [Cloning a repository](https://docs.github.com/en/repositories/creating-and-managing-repositories/cloning-a-repository) guide in the GitHub docs.
-  </Accordion>
-  <Accordion icon="rectangle-terminal" title="Start the preview server">
-    1. Install the Mintlify CLI: `npm i -g mint`
-    2. Navigate to your docs directory and run: `mint dev`
-    3. Open `http://localhost:3000` to see your docs live!
-    
-    <Tip>Your preview updates automatically as you edit files.</Tip>
-  </Accordion>
-</AccordionGroup>
+- Go 1.24+ (可选，用于从源码构建)
+- Docker (可选，用于容器化部署)
+- MySQL 8.0+ (用于元数据存储)
+- Redis 6.0+ (用于缓存和会话)
 
-### Step 2: Deploy your changes
+## 安装 Arcade Server
 
-<AccordionGroup>
-  <Accordion icon="github" title="Install our GitHub app">
-    Install the Mintlify GitHub app from your [dashboard](https://dashboard.mintlify.com/settings/organization/github-app).
-    
-    Our GitHub app automatically deploys your changes to your docs site, so you don't need to manage deployments yourself.
-</Accordion>
-<Accordion icon="palette" title="Update your site name and colors">
-    For a first change, let's update the name and colors of your docs site.
+### 方式一：下载二进制文件
 
-    1. Open `docs.json` in your editor.
-    2. Change the `"name"` field to your project name.
-    3. Update the `"colors"` to match your brand.
-    4. Save and see your changes instantly at `http://localhost:3000`.
+```bash
+# 下载最新版本
+wget https://github.com/go-arcade/arcade/releases/latest/download/arcade-linux-amd64
 
-    <Tip>Try changing the primary color to see an immediate difference!</Tip>
-  </Accordion>
-</AccordionGroup>
+# 添加执行权限
+chmod +x arcade-linux-amd64
 
-### Step 3: Go live
+# 移动到系统路径
+sudo mv arcade-linux-amd64 /usr/local/bin/arcade
+```
 
-<Accordion icon="rocket" title="Publish your docs">
-  1. Commit and push your changes.
-  2. Your docs will update and be live in moments!
-</Accordion>
+### 方式二：从源码构建
 
-## Next steps
+```bash
+# 克隆仓库
+git clone https://github.com/go-arcade/arcade.git
+cd arcade
 
-Now that you have your docs running, explore these key features:
+# 构建
+make build
 
-<CardGroup cols={2}>
+# 安装
+sudo make install
+```
 
-<Card title="Write Content" icon="pen-to-square" href="/essentials/markdown">
-  Learn MDX syntax and start writing your documentation.
-</Card>
+## 配置 Arcade Server
 
-<Card title="Customize style" icon="palette" href="/essentials/settings">
-  Make your docs match your brand perfectly.
-</Card>
+创建配置文件 `conf.d/config.toml`：
 
-<Card title="Add code examples" icon="square-code" href="/essentials/code">
-  Include syntax-highlighted code blocks.
-</Card>
+```toml
+[log]
+output = "stdout"
+level = "INFO"
 
-<Card title="API documentation" icon="code" href="/api-reference/introduction">
-  Auto-generate API docs from OpenAPI specs.
-</Card>
+[grpc]
+host = "0.0.0.0"
+port = 9090
 
-</CardGroup>
+[http]
+host = "0.0.0.0"
+port = 8080
+mode = "debug"
 
-<Note>
-  **Need help?** See our [full documentation](https://mintlify.com/docs) or join our [community](https://mintlify.com/community).
-</Note>
+[database]
+type = "mysql"
+host = "127.0.0.1"
+port = "3306"
+user = "root"
+password = "your_password"
+db = "arcade"
+
+[redis]
+mode = "single"
+address = "127.0.0.1:6379"
+password = ""
+db = 0
+```
+
+## 启动 Arcade Server
+
+```bash
+# 启动 Server
+arcade --conf conf.d/config.toml
+```
+
+Server 启动后，您将看到类似输出：
+
+```
+2024-01-01T12:00:00.000Z INFO HTTP server starting at 0.0.0.0:8080
+2024-01-01T12:00:00.000Z INFO gRPC server starting at 0.0.0.0:9090
+2024-01-01T12:00:00.000Z INFO Arcade Server started successfully
+```
+
+## 安装 Arcade Agent
+
+### 方式一：下载二进制文件
+
+```bash
+# 下载 Agent
+wget https://github.com/go-arcade/arcade-agent/releases/latest/download/arcade-agent-linux-amd64
+
+# 添加执行权限
+chmod +x arcade-agent-linux-amd64
+
+# 移动到系统路径
+sudo mv arcade-agent-linux-amd64 /usr/local/bin/arcade-agent
+```
+
+### 方式二：从源码构建
+
+```bash
+# 克隆 Agent 仓库
+git clone https://github.com/go-arcade/arcade-agent.git
+cd arcade-agent
+
+# 构建
+make build
+
+# 安装
+sudo make install
+```
+
+## 配置 Arcade Agent
+
+创建 Agent 配置文件 `conf.d/config.toml`：
+
+```toml
+serverAddr = "127.0.0.1:9090"
+
+[agent]
+interval = 60
+labels = { "env" = "dev", "region" = "local" }
+
+[log]
+output = "stdout"
+level = "INFO"
+```
+
+## 启动 Arcade Agent
+
+```bash
+# 启动 Agent
+arcade-agent --conf conf.d/config.toml
+```
+
+Agent 启动后，您将看到类似输出：
+
+```
+2024-01-01T12:00:00.000Z INFO Agent registered successfully
+2024-01-01T12:00:00.000Z INFO Agent started successfully
+```
+
+## 创建第一个流水线
+
+### 使用 Web UI
+
+1. 打开浏览器访问 `http://localhost:8080`
+2. 点击 "Create Pipeline" 按钮
+3. 填写流水线信息：
+
+```yaml
+name: "Hello World Pipeline"
+description: "我的第一个流水线"
+
+stages:
+  - name: "build"
+    jobs:
+      - name: "hello-job"
+        commands:
+          - "echo 'Hello, Arcade!'"
+          - "echo '当前时间: $(date)'"
+        env:
+          GREETING: "Hello"
+```
+
+4. 点击 "Save" 保存流水线
+5. 点击 "Trigger" 触发执行
+
+### 使用 API
+
+```bash
+# 创建流水线
+curl -X POST http://localhost:8080/api/v1/pipelines \
+  -H "Content-Type: application/json" \
+  -d '{
+    "name": "Hello World Pipeline",
+    "description": "我的第一个流水线",
+    "stages": [
+      {
+        "name": "build",
+        "jobs": [
+          {
+            "name": "hello-job",
+            "commands": [
+              "echo \"Hello, Arcade!\"",
+              "echo \"当前时间: $(date)\""
+            ],
+            "env": {
+              "GREETING": "Hello"
+            }
+          }
+        ]
+      }
+    ]
+  }'
+
+# 触发流水线
+curl -X POST http://localhost:8080/api/v1/pipelines/{pipeline_id}/trigger
+```
+
+## 监控任务执行
+
+### Web UI 监控
+
+1. 访问 `http://localhost:8080/pipelines`
+2. 点击流水线名称查看详情
+3. 在 "Runs" 标签页查看执行历史
+4. 点击运行记录查看实时日志
+
+### API 监控
+
+```bash
+# 获取流水线列表
+curl http://localhost:8080/api/v1/pipelines
+
+# 获取任务列表
+curl http://localhost:8080/api/v1/tasks
+
+# 获取 Agent 列表
+curl http://localhost:8080/api/v1/agents
+```
+
+## 查看日志
+
+### Server 日志
+
+```bash
+# 查看 Server 日志
+tail -f logs/arcade.log
+```
+
+### Agent 日志
+
+```bash
+# 查看 Agent 日志
+tail -f logs/arcade-agent.log
+```
+
+### 任务日志
+
+通过 Web UI 或 API 查看任务执行日志：
+
+```bash
+# 获取任务日志
+curl http://localhost:8080/api/v1/tasks/{task_id}/logs
+```
+
+## 下一步
+
+恭喜！您已经成功运行了第一个 Arcade 流水线。接下来您可以：
+
+- [学习流水线配置](/pipelines) - 深入了解流水线配置
+- [探索插件系统](/plugins) - 使用和开发插件
+- [API 参考](/api-reference) - 完整的 API 文档
+- [部署指南](/deployment) - 生产环境部署
+
+## 常见问题
+
+### Q: Agent 无法连接到 Server？
+
+A: 检查以下几点：
+1. Server 是否正在运行
+2. gRPC 端口 9090 是否开放
+3. Agent 配置中的 `serverAddr` 是否正确
+4. 防火墙设置
+
+### Q: 任务执行失败？
+
+A: 检查以下几点：
+1. Agent 是否在线
+2. Agent 标签是否匹配任务要求
+3. 任务命令是否正确
+4. 环境变量是否设置
+
+### Q: 如何添加更多 Agent？
+
+A: 在另一台机器上安装 Agent，确保：
+1. 网络连通性
+2. 标签配置正确
+3. 必要的工具和依赖已安装
+
+## 获取帮助
+
+- [GitHub Issues](https://github.com/go-arcade/arcade/issues) - 报告问题
+- [Discussions](https://github.com/go-arcade/arcade/discussions) - 社区讨论
+- [文档](https://docs.arcade.dev) - 完整文档

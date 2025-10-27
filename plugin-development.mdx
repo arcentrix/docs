@@ -1,0 +1,820 @@
+---
+title: "Plugin Development"
+description: "Arcade 插件开发指南和最佳实践"
+---
+
+# 插件开发指南
+
+Arcade 提供了强大的插件系统，支持多种类型的插件开发。本指南将帮助您快速上手插件开发。
+
+## 插件系统概述
+
+### 插件架构
+
+Arcade 插件系统基于 HashiCorp go-plugin 构建，具有以下特性：
+
+- **进程隔离**: 每个插件运行在独立进程中
+- **热加载**: 支持插件动态加载和卸载
+- **RPC 通信**: 基于 net/rpc 的进程间通信
+- **自动监控**: 文件系统监控，自动发现新插件
+- **日志捕获**: 插件 stdout/stderr 自动捕获
+
+### 插件类型
+
+Arcade 支持以下 6 种插件类型：
+
+#### 1. CI 插件 (Continuous Integration)
+- **用途**: 构建、测试、代码检查
+- **示例**: Maven、Gradle、npm、Docker、Kubernetes
+- **特性**: 多语言支持、依赖管理、缓存优化
+
+#### 2. CD 插件 (Continuous Deployment)
+- **用途**: 部署、回滚、发布管理
+- **示例**: Kubernetes、Docker Swarm、AWS ECS
+- **特性**: 蓝绿部署、金丝雀发布、自动回滚
+
+#### 3. Security 插件
+- **用途**: 安全扫描、审计、合规检查
+- **示例**: SAST、DAST、依赖扫描、镜像扫描
+- **特性**: 漏洞检测、合规检查、报告生成
+
+#### 4. Notify 插件
+- **用途**: 消息通知、告警
+- **示例**: Slack、邮件、钉钉、企业微信
+- **特性**: 多渠道通知、模板支持、条件触发
+
+#### 5. Storage 插件
+- **用途**: 存储管理、文件操作
+- **示例**: S3、MinIO、GCS、OSS
+- **特性**: 多存储后端、分片上传、CDN 集成
+
+#### 6. Custom 插件
+- **用途**: 自定义功能扩展
+- **示例**: 自定义工具、第三方集成
+- **特性**: 灵活配置、自定义接口
+
+## 插件开发环境
+
+### 环境要求
+
+- **Go 1.24+**: 插件开发语言
+- **Arcade SDK**: 插件开发 SDK
+- **Docker**: 容器化测试环境
+- **Git**: 版本控制
+
+### 安装 Arcade SDK
+
+```bash
+# 安装 Arcade 插件 SDK
+go get github.com/go-arcade/arcade-sdk-go
+
+# 安装插件开发工具
+go install github.com/go-arcade/arcade-plugin-tools@latest
+```
+
+### 项目结构
+
+```
+my-plugin/
+├── main.go              # 插件入口文件
+├── plugin.go            # 插件实现
+├── config.go            # 配置结构
+├── manifest.json        # 插件清单
+├── Dockerfile           # 容器化文件
+├── README.md            # 插件文档
+├── go.mod               # Go 模块文件
+├── go.sum               # 依赖校验
+└── examples/            # 使用示例
+    ├── config.yaml
+    └── test.go
+```
+
+## 插件开发
+
+### 1. 创建插件项目
+
+```bash
+# 使用插件工具创建项目
+arcade-plugin-tools create my-plugin --type=ci
+
+# 进入项目目录
+cd my-plugin
+
+# 初始化 Go 模块
+go mod init github.com/mycompany/my-plugin
+```
+
+### 2. 实现插件接口
+
+#### 插件接口定义
+
+```go
+package main
+
+import (
+    "context"
+    "encoding/json"
+    "fmt"
+    "os"
+    
+    "github.com/go-arcade/arcade-sdk-go/plugin"
+)
+
+// MyPlugin 插件实现
+type MyPlugin struct {
+    config *Config
+    logger plugin.Logger
+}
+
+// Config 插件配置
+type Config struct {
+    Name        string            `json:"name"`
+    Version     string            `json:"version"`
+    Description string            `json:"description"`
+    Settings    map[string]interface{} `json:"settings"`
+}
+
+// PluginInfo 插件信息
+type PluginInfo struct {
+    Name        string `json:"name"`
+    Type        string `json:"type"`
+    Version     string `json:"version"`
+    Description string `json:"description"`
+    Author      string `json:"author"`
+    Repository  string `json:"repository"`
+}
+
+// Task 任务定义
+type Task struct {
+    ID          string            `json:"id"`
+    Name        string            `json:"name"`
+    Commands    []string          `json:"commands"`
+    Environment map[string]string `json:"environment"`
+    Workspace   string            `json:"workspace"`
+    Timeout     int               `json:"timeout"`
+}
+
+// TaskResult 任务结果
+type TaskResult struct {
+    ID        string            `json:"id"`
+    Status    string            `json:"status"`
+    ExitCode  int               `json:"exit_code"`
+    Output    string            `json:"output"`
+    Error     string            `json:"error"`
+    Duration  int64             `json:"duration"`
+    Artifacts []string          `json:"artifacts"`
+    Metrics   map[string]interface{} `json:"metrics"`
+}
+
+// GetInfo 获取插件信息
+func (p *MyPlugin) GetInfo() PluginInfo {
+    return PluginInfo{
+        Name:        p.config.Name,
+        Type:        "ci",
+        Version:     p.config.Version,
+        Description: p.config.Description,
+        Author:      "My Company",
+        Repository:  "https://github.com/mycompany/my-plugin",
+    }
+}
+
+// Init 初始化插件
+func (p *MyPlugin) Init(config map[string]interface{}) error {
+    p.logger.Info("Initializing plugin", "name", p.config.Name)
+    
+    // 验证配置
+    if err := p.validateConfig(config); err != nil {
+        return fmt.Errorf("invalid config: %w", err)
+    }
+    
+    // 初始化资源
+    if err := p.initializeResources(); err != nil {
+        return fmt.Errorf("failed to initialize resources: %w", err)
+    }
+    
+    p.logger.Info("Plugin initialized successfully")
+    return nil
+}
+
+// Execute 执行任务
+func (p *MyPlugin) Execute(ctx context.Context, task Task) (*TaskResult, error) {
+    p.logger.Info("Executing task", "task_id", task.ID, "name", task.Name)
+    
+    startTime := time.Now()
+    
+    // 执行任务逻辑
+    result, err := p.executeTask(ctx, task)
+    if err != nil {
+        p.logger.Error("Task execution failed", "task_id", task.ID, "error", err)
+        return &TaskResult{
+            ID:       task.ID,
+            Status:   "failed",
+            ExitCode: 1,
+            Error:    err.Error(),
+            Duration: time.Since(startTime).Milliseconds(),
+        }, nil
+    }
+    
+    duration := time.Since(startTime).Milliseconds()
+    result.Duration = duration
+    
+    p.logger.Info("Task completed successfully", 
+        "task_id", task.ID, 
+        "duration_ms", duration,
+        "exit_code", result.ExitCode)
+    
+    return result, nil
+}
+
+// Cleanup 清理资源
+func (p *MyPlugin) Cleanup() error {
+    p.logger.Info("Cleaning up plugin resources")
+    
+    // 清理资源
+    if err := p.cleanupResources(); err != nil {
+        p.logger.Error("Failed to cleanup resources", "error", err)
+        return err
+    }
+    
+    p.logger.Info("Plugin cleanup completed")
+    return nil
+}
+
+// Ping 健康检查
+func (p *MyPlugin) Ping() error {
+    // 检查插件状态
+    if err := p.checkHealth(); err != nil {
+        return fmt.Errorf("plugin unhealthy: %w", err)
+    }
+    return nil
+}
+
+// GetMetrics 获取指标
+func (p *MyPlugin) GetMetrics() map[string]interface{} {
+    return map[string]interface{}{
+        "status":           "healthy",
+        "uptime":          time.Since(p.startTime).Seconds(),
+        "tasks_executed":  p.taskCount,
+        "memory_usage":    p.getMemoryUsage(),
+        "cpu_usage":       p.getCPUUsage(),
+    }
+}
+
+// 辅助方法
+func (p *MyPlugin) validateConfig(config map[string]interface{}) error {
+    // 验证配置参数
+    return nil
+}
+
+func (p *MyPlugin) initializeResources() error {
+    // 初始化插件资源
+    return nil
+}
+
+func (p *MyPlugin) executeTask(ctx context.Context, task Task) (*TaskResult, error) {
+    // 执行具体任务逻辑
+    return &TaskResult{
+        ID:       task.ID,
+        Status:   "success",
+        ExitCode: 0,
+        Output:   "Task completed successfully",
+    }, nil
+}
+
+func (p *MyPlugin) cleanupResources() error {
+    // 清理插件资源
+    return nil
+}
+
+func (p *MyPlugin) checkHealth() error {
+    // 检查插件健康状态
+    return nil
+}
+
+func (p *MyPlugin) getMemoryUsage() float64 {
+    // 获取内存使用情况
+    return 0.0
+}
+
+func (p *MyPlugin) getCPUUsage() float64 {
+    // 获取 CPU 使用情况
+    return 0.0
+}
+```
+
+### 3. 插件入口文件
+
+```go
+package main
+
+import (
+    "flag"
+    "log"
+    "os"
+    
+    "github.com/go-arcade/arcade-sdk-go/plugin"
+)
+
+var (
+    configFile = flag.String("config", "", "Plugin configuration file")
+    logLevel   = flag.String("log-level", "info", "Log level")
+)
+
+func main() {
+    flag.Parse()
+    
+    // 创建插件实例
+    myPlugin := &MyPlugin{
+        config: &Config{
+            Name:        "my-plugin",
+            Version:     "1.0.0",
+            Description: "My custom CI plugin",
+        },
+        logger: plugin.NewLogger(*logLevel),
+    }
+    
+    // 启动插件服务器
+    server := plugin.NewServer(myPlugin)
+    
+    // 运行插件
+    if err := server.Run(); err != nil {
+        log.Fatal("Plugin server failed:", err)
+        os.Exit(1)
+    }
+}
+```
+
+### 4. 插件清单文件
+
+```json
+{
+  "name": "my-plugin",
+  "type": "ci",
+  "version": "1.0.0",
+  "description": "My custom CI plugin for Arcade",
+  "author": "My Company",
+  "repository": "https://github.com/mycompany/my-plugin",
+  "license": "MIT",
+  "homepage": "https://github.com/mycompany/my-plugin",
+  "keywords": ["ci", "build", "test"],
+  "dependencies": {
+    "go": ">=1.24",
+    "docker": ">=20.0.0"
+  },
+  "config_schema": {
+    "type": "object",
+    "properties": {
+      "name": {
+        "type": "string",
+        "description": "Plugin name"
+      },
+      "version": {
+        "type": "string",
+        "description": "Plugin version"
+      },
+      "settings": {
+        "type": "object",
+        "properties": {
+          "timeout": {
+            "type": "integer",
+            "default": 300,
+            "description": "Task timeout in seconds"
+          },
+          "parallel": {
+            "type": "boolean",
+            "default": true,
+            "description": "Enable parallel execution"
+          }
+        }
+      }
+    },
+    "required": ["name", "version"]
+  },
+  "capabilities": {
+    "parallel": true,
+    "caching": true,
+    "artifacts": true,
+    "environment": true,
+    "secrets": false
+  },
+  "examples": [
+    {
+      "name": "Basic Usage",
+      "description": "Basic plugin usage example",
+      "config": {
+        "name": "my-plugin",
+        "version": "1.0.0",
+        "settings": {
+          "timeout": 300,
+          "parallel": true
+        }
+      }
+    }
+  ]
+}
+```
+
+## 插件测试
+
+### 单元测试
+
+```go
+package main
+
+import (
+    "context"
+    "testing"
+    "time"
+)
+
+func TestMyPlugin_GetInfo(t *testing.T) {
+    plugin := &MyPlugin{
+        config: &Config{
+            Name:        "test-plugin",
+            Version:     "1.0.0",
+            Description: "Test plugin",
+        },
+    }
+    
+    info := plugin.GetInfo()
+    
+    if info.Name != "test-plugin" {
+        t.Errorf("Expected name 'test-plugin', got '%s'", info.Name)
+    }
+    
+    if info.Type != "ci" {
+        t.Errorf("Expected type 'ci', got '%s'", info.Type)
+    }
+}
+
+func TestMyPlugin_Execute(t *testing.T) {
+    plugin := &MyPlugin{
+        config: &Config{
+            Name:    "test-plugin",
+            Version: "1.0.0",
+        },
+    }
+    
+    task := Task{
+        ID:       "test-task",
+        Name:     "Test Task",
+        Commands: []string{"echo", "Hello World"},
+    }
+    
+    ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+    defer cancel()
+    
+    result, err := plugin.Execute(ctx, task)
+    if err != nil {
+        t.Fatalf("Execute failed: %v", err)
+    }
+    
+    if result.Status != "success" {
+        t.Errorf("Expected status 'success', got '%s'", result.Status)
+    }
+    
+    if result.ExitCode != 0 {
+        t.Errorf("Expected exit code 0, got %d", result.ExitCode)
+    }
+}
+```
+
+### 集成测试
+
+```go
+package main
+
+import (
+    "context"
+    "os"
+    "testing"
+    "time"
+)
+
+func TestPluginIntegration(t *testing.T) {
+    // 设置测试环境
+    os.Setenv("PLUGIN_CONFIG", "test-config.json")
+    
+    // 创建插件实例
+    plugin := &MyPlugin{
+        config: loadTestConfig(),
+    }
+    
+    // 初始化插件
+    if err := plugin.Init(map[string]interface{}{}); err != nil {
+        t.Fatalf("Init failed: %v", err)
+    }
+    
+    // 健康检查
+    if err := plugin.Ping(); err != nil {
+        t.Fatalf("Ping failed: %v", err)
+    }
+    
+    // 执行测试任务
+    task := Task{
+        ID:       "integration-test",
+        Name:     "Integration Test",
+        Commands: []string{"echo", "Integration test"},
+    }
+    
+    ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
+    defer cancel()
+    
+    result, err := plugin.Execute(ctx, task)
+    if err != nil {
+        t.Fatalf("Execute failed: %v", err)
+    }
+    
+    // 验证结果
+    if result.Status != "success" {
+        t.Errorf("Expected status 'success', got '%s'", result.Status)
+    }
+    
+    // 清理
+    if err := plugin.Cleanup(); err != nil {
+        t.Errorf("Cleanup failed: %v", err)
+    }
+}
+```
+
+## 插件打包和分发
+
+### 1. 构建插件
+
+```bash
+# 构建插件二进制文件
+go build -o my-plugin main.go plugin.go
+
+# 构建多平台版本
+GOOS=linux GOARCH=amd64 go build -o my-plugin-linux-amd64 main.go plugin.go
+GOOS=windows GOARCH=amd64 go build -o my-plugin-windows-amd64.exe main.go plugin.go
+GOOS=darwin GOARCH=amd64 go build -o my-plugin-darwin-amd64 main.go plugin.go
+```
+
+### 2. 容器化
+
+```dockerfile
+FROM golang:1.24-alpine AS builder
+
+WORKDIR /app
+COPY . .
+
+RUN go mod download
+RUN CGO_ENABLED=0 GOOS=linux go build -a -installsuffix cgo -o my-plugin main.go plugin.go
+
+FROM alpine:latest
+
+RUN apk --no-cache add ca-certificates
+WORKDIR /root/
+
+COPY --from=builder /app/my-plugin .
+COPY --from=builder /app/manifest.json .
+
+CMD ["./my-plugin"]
+```
+
+### 3. 插件注册
+
+```bash
+# 上传插件到 Arcade
+arcade-plugin-tools upload my-plugin --server=http://localhost:8080
+
+# 验证插件
+arcade-plugin-tools validate my-plugin
+
+# 发布插件
+arcade-plugin-tools publish my-plugin --version=1.0.0
+```
+
+## 插件最佳实践
+
+### 1. 错误处理
+
+```go
+func (p *MyPlugin) Execute(ctx context.Context, task Task) (*TaskResult, error) {
+    // 使用 context 处理超时
+    select {
+    case <-ctx.Done():
+        return nil, ctx.Err()
+    default:
+    }
+    
+    // 使用 defer 确保资源清理
+    defer func() {
+        if r := recover(); r != nil {
+            p.logger.Error("Plugin panic recovered", "panic", r)
+        }
+    }()
+    
+    // 详细的错误信息
+    if err := p.validateTask(task); err != nil {
+        return &TaskResult{
+            ID:     task.ID,
+            Status: "failed",
+            Error:  fmt.Sprintf("Task validation failed: %v", err),
+        }, nil
+    }
+    
+    // 执行任务...
+}
+```
+
+### 2. 日志记录
+
+```go
+func (p *MyPlugin) Execute(ctx context.Context, task Task) (*TaskResult, error) {
+    // 结构化日志
+    p.logger.Info("Starting task execution",
+        "task_id", task.ID,
+        "task_name", task.Name,
+        "commands", task.Commands,
+        "workspace", task.Workspace)
+    
+    // 进度日志
+    p.logger.Info("Task progress", "task_id", task.ID, "step", "initialization")
+    
+    // 错误日志
+    if err != nil {
+        p.logger.Error("Task execution failed",
+            "task_id", task.ID,
+            "error", err,
+            "duration_ms", time.Since(startTime).Milliseconds())
+    }
+    
+    return result, nil
+}
+```
+
+### 3. 资源管理
+
+```go
+func (p *MyPlugin) Execute(ctx context.Context, task Task) (*TaskResult, error) {
+    // 资源限制
+    if err := p.setResourceLimits(task); err != nil {
+        return nil, fmt.Errorf("failed to set resource limits: %w", err)
+    }
+    
+    // 清理资源
+    defer func() {
+        if err := p.cleanupTaskResources(task.ID); err != nil {
+            p.logger.Error("Failed to cleanup task resources", "error", err)
+        }
+    }()
+    
+    // 执行任务...
+}
+```
+
+### 4. 配置管理
+
+```go
+type Config struct {
+    Name     string                 `json:"name"`
+    Version  string                 `json:"version"`
+    Settings map[string]interface{} `json:"settings"`
+}
+
+func (p *MyPlugin) Init(config map[string]interface{}) error {
+    // 配置验证
+    if err := p.validateConfig(config); err != nil {
+        return fmt.Errorf("invalid configuration: %w", err)
+    }
+    
+    // 默认值设置
+    p.setDefaultValues()
+    
+    // 环境变量支持
+    p.loadFromEnvironment()
+    
+    return nil
+}
+```
+
+## 插件调试
+
+### 1. 本地调试
+
+```bash
+# 启动插件服务器
+go run main.go plugin.go --config=config.json --log-level=debug
+
+# 使用插件工具测试
+arcade-plugin-tools test my-plugin --config=test-config.json
+```
+
+### 2. 远程调试
+
+```bash
+# 启用远程调试
+go run main.go plugin.go --debug --debug-port=2345
+
+# 使用 delve 调试器
+dlv attach <pid> --headless --listen=:2345
+```
+
+### 3. 日志调试
+
+```go
+func (p *MyPlugin) Execute(ctx context.Context, task Task) (*TaskResult, error) {
+    // 调试日志
+    p.logger.Debug("Task execution started",
+        "task_id", task.ID,
+        "config", p.config,
+        "environment", os.Environ())
+    
+    // 性能监控
+    startTime := time.Now()
+    defer func() {
+        duration := time.Since(startTime)
+        p.logger.Debug("Task execution completed",
+            "task_id", task.ID,
+            "duration_ms", duration.Milliseconds())
+    }()
+    
+    // 执行任务...
+}
+```
+
+## 插件发布
+
+### 1. 版本管理
+
+```bash
+# 创建版本标签
+git tag -a v1.0.0 -m "Release version 1.0.0"
+git push origin v1.0.0
+
+# 更新版本号
+arcade-plugin-tools version bump --type=minor
+```
+
+### 2. 发布流程
+
+```bash
+# 构建插件
+arcade-plugin-tools build --platform=all
+
+# 运行测试
+arcade-plugin-tools test --coverage
+
+# 验证插件
+arcade-plugin-tools validate
+
+# 发布到插件市场
+arcade-plugin-tools publish --marketplace
+```
+
+### 3. 文档生成
+
+```bash
+# 生成 API 文档
+arcade-plugin-tools docs generate
+
+# 生成使用示例
+arcade-plugin-tools examples generate
+
+# 生成 README
+arcade-plugin-tools readme generate
+```
+
+## 常见问题
+
+### Q: 插件启动失败？
+
+A: 检查以下几点：
+1. 插件二进制文件是否正确
+2. 配置文件格式是否正确
+3. 依赖是否满足
+4. 权限是否正确
+
+### Q: 插件执行超时？
+
+A: 检查以下几点：
+1. 任务超时设置是否合理
+2. 资源限制是否过严格
+3. 网络连接是否正常
+4. 依赖服务是否可用
+
+### Q: 插件内存泄漏？
+
+A: 检查以下几点：
+1. 是否正确释放资源
+2. 是否有循环引用
+3. 是否使用了 defer 清理
+4. 是否有 goroutine 泄漏
+
+### Q: 插件性能问题？
+
+A: 检查以下几点：
+1. 是否使用了连接池
+2. 是否有不必要的重复计算
+3. 是否使用了缓存
+4. 是否有阻塞操作
+
+## 获取帮助
+
+- [插件开发文档](https://docs.arcade.dev/plugin-development)
+- [API 参考](https://docs.arcade.dev/api-reference)
+- [示例代码](https://github.com/go-arcade/plugins)
+- [社区论坛](https://github.com/go-arcade/arcade/discussions)
+- [问题反馈](https://github.com/go-arcade/arcade/issues)

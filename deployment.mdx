@@ -1,0 +1,1527 @@
+---
+title: "Deployment Guide"
+description: "Arcade CI/CD 平台生产环境部署指南"
+---
+
+# 部署指南
+
+本指南将帮助您在生产环境中部署 Arcade CI/CD 平台。
+
+## 部署架构
+
+### 生产环境架构
+
+```mermaid
+graph TB
+    subgraph "Internet"
+        USER[Users]
+        DEV[Developers]
+        ADMIN[Administrators]
+    end
+    
+    subgraph "DMZ"
+        LB[Load Balancer<br/>Nginx/HAProxy]
+        WAF[Web Application Firewall]
+    end
+    
+    subgraph "Application Tier"
+        subgraph "Arcade Server Cluster"
+            S1[Server 1<br/>Primary]
+            S2[Server 2<br/>Secondary]
+            S3[Server 3<br/>Tertiary]
+        end
+        
+        subgraph "Agent Cluster"
+            A1[Agent 1<br/>Production]
+            A2[Agent 2<br/>Production]
+            A3[Agent 3<br/>Staging]
+            A4[Agent 4<br/>Development]
+        end
+    end
+    
+    subgraph "Data Tier"
+        subgraph "Database Cluster"
+            MYSQL1[MySQL Primary<br/>Read/Write]
+            MYSQL2[MySQL Replica 1<br/>Read Only]
+            MYSQL3[MySQL Replica 2<br/>Read Only]
+        end
+        
+        subgraph "Cache Cluster"
+            REDIS1[Redis Master<br/>Write]
+            REDIS2[Redis Slave 1<br/>Read]
+            REDIS3[Redis Slave 2<br/>Read]
+        end
+        
+        subgraph "Document Cluster"
+            MONGO1[MongoDB Primary<br/>Write]
+            MONGO2[MongoDB Secondary<br/>Read]
+            MONGO3[MongoDB Arbiter<br/>Voting]
+        end
+    end
+    
+    subgraph "Storage Tier"
+        subgraph "Object Storage"
+            S3[AWS S3<br/>Artifacts]
+            MINIO[MinIO<br/>Self-hosted]
+        end
+        
+        subgraph "File Storage"
+            NFS[NFS/SMB<br/>Shared Storage]
+            LOCAL[Local Storage<br/>Temporary Files]
+        end
+    end
+    
+    subgraph "Monitoring Tier"
+        PROMETHEUS[Prometheus<br/>Metrics]
+        GRAFANA[Grafana<br/>Dashboards]
+        ELK[ELK Stack<br/>Logs]
+        JAEGER[Jaeger<br/>Tracing]
+    end
+    
+    %% User connections
+    USER --> LB
+    DEV --> LB
+    ADMIN --> LB
+    
+    %% DMZ connections
+    LB --> WAF
+    WAF --> S1
+    WAF --> S2
+    WAF --> S3
+    
+    %% Application connections
+    S1 --> MYSQL1
+    S2 --> MYSQL1
+    S3 --> MYSQL1
+    
+    S1 --> REDIS1
+    S2 --> REDIS1
+    S3 --> REDIS1
+    
+    S1 --> MONGO1
+    S2 --> MONGO1
+    S3 --> MONGO1
+    
+    %% Agent connections
+    S1 -.->|gRPC| A1
+    S1 -.->|gRPC| A2
+    S2 -.->|gRPC| A3
+    S3 -.->|gRPC| A4
+    
+    %% Database replication
+    MYSQL1 --> MYSQL2
+    MYSQL1 --> MYSQL3
+    REDIS1 --> REDIS2
+    REDIS1 --> REDIS3
+    MONGO1 --> MONGO2
+    MONGO1 --> MONGO3
+    
+    %% Storage connections
+    S1 --> S3
+    S1 --> MINIO
+    A1 --> S3
+    A2 --> MINIO
+    
+    %% Monitoring connections
+    S1 --> PROMETHEUS
+    S2 --> PROMETHEUS
+    S3 --> PROMETHEUS
+    A1 --> PROMETHEUS
+    A2 --> PROMETHEUS
+```
+
+## 环境准备
+
+### 硬件要求
+
+#### Server 节点
+- **CPU**: 8+ 核心 (推荐 16+ 核心)
+- **内存**: 16GB+ (推荐 32GB+)
+- **存储**: 100GB+ SSD (推荐 500GB+ NVMe)
+- **网络**: 1Gbps+ (推荐 10Gbps)
+
+#### Agent 节点
+- **CPU**: 4+ 核心 (推荐 8+ 核心)
+- **内存**: 8GB+ (推荐 16GB+)
+- **存储**: 50GB+ SSD (推荐 200GB+ NVMe)
+- **网络**: 1Gbps+ (推荐 10Gbps)
+
+#### 数据库节点
+- **CPU**: 8+ 核心 (推荐 16+ 核心)
+- **内存**: 32GB+ (推荐 64GB+)
+- **存储**: 500GB+ SSD (推荐 1TB+ NVMe)
+- **网络**: 10Gbps+ (推荐 25Gbps)
+
+### 软件要求
+
+#### 操作系统
+- **Linux**: Ubuntu 20.04+, CentOS 8+, RHEL 8+
+- **容器**: Docker 20.10+, Kubernetes 1.24+
+- **网络**: 支持 IPv4/IPv6
+
+#### 依赖软件
+- **Go**: 1.24+ (编译环境)
+- **Docker**: 20.10+ (容器运行时)
+- **Kubernetes**: 1.24+ (容器编排)
+- **MySQL**: 8.0+ (关系数据库)
+- **Redis**: 6.0+ (缓存数据库)
+- **MongoDB**: 6.0+ (文档数据库)
+
+## 部署方式
+
+### 1. Docker Compose 部署
+
+#### 环境配置
+
+```bash
+# 创建部署目录
+mkdir -p /opt/arcade
+cd /opt/arcade
+
+# 创建环境变量文件
+cat > .env << EOF
+# 数据库配置
+MYSQL_ROOT_PASSWORD=your_secure_password
+MYSQL_DATABASE=arcade
+MYSQL_USER=arcade
+MYSQL_PASSWORD=your_secure_password
+
+# Redis 配置
+REDIS_PASSWORD=your_secure_password
+
+# MongoDB 配置
+MONGO_ROOT_USERNAME=admin
+MONGO_ROOT_PASSWORD=your_secure_password
+MONGO_DATABASE=arcade
+
+# Arcade 配置
+ARCADE_SECRET_KEY=your_jwt_secret_key
+ARCADE_ADMIN_USER=admin
+ARCADE_ADMIN_PASSWORD=your_admin_password
+EOF
+```
+
+#### Docker Compose 配置
+
+```yaml
+version: '3.8'
+
+services:
+  # Arcade Server
+  arcade-server:
+    image: arcade:latest
+    container_name: arcade-server
+    ports:
+      - "8080:8080"
+      - "9090:9090"
+    environment:
+      - DATABASE_HOST=mysql
+      - DATABASE_PORT=3306
+      - DATABASE_USER=arcade
+      - DATABASE_PASSWORD=${MYSQL_PASSWORD}
+      - DATABASE_NAME=arcade
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+      - REDIS_PASSWORD=${REDIS_PASSWORD}
+      - MONGODB_HOST=mongodb
+      - MONGODB_PORT=27017
+      - MONGODB_USERNAME=arcade
+      - MONGODB_PASSWORD=${MONGO_ROOT_PASSWORD}
+      - MONGODB_DATABASE=arcade
+      - JWT_SECRET_KEY=${ARCADE_SECRET_KEY}
+    depends_on:
+      - mysql
+      - redis
+      - mongodb
+    volumes:
+      - ./conf.d:/app/conf.d
+      - ./plugins:/app/plugins
+      - ./logs:/app/logs
+      - ./data:/app/data
+    networks:
+      - arcade-network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:8080/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+
+  # MySQL Database
+  mysql:
+    image: mysql:8.0
+    container_name: arcade-mysql
+    ports:
+      - "3306:3306"
+    environment:
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD}
+      MYSQL_DATABASE: ${MYSQL_DATABASE}
+      MYSQL_USER: ${MYSQL_USER}
+      MYSQL_PASSWORD: ${MYSQL_PASSWORD}
+    volumes:
+      - mysql_data:/var/lib/mysql
+      - ./mysql/conf.d:/etc/mysql/conf.d
+      - ./mysql/init:/docker-entrypoint-initdb.d
+    networks:
+      - arcade-network
+    restart: unless-stopped
+    command: --default-authentication-plugin=mysql_native_password
+
+  # Redis Cache
+  redis:
+    image: redis:7-alpine
+    container_name: arcade-redis
+    ports:
+      - "6379:6379"
+    command: redis-server --requirepass ${REDIS_PASSWORD}
+    volumes:
+      - redis_data:/data
+      - ./redis/redis.conf:/usr/local/etc/redis/redis.conf
+    networks:
+      - arcade-network
+    restart: unless-stopped
+
+  # MongoDB Document Store
+  mongodb:
+    image: mongo:6
+    container_name: arcade-mongodb
+    ports:
+      - "27017:27017"
+    environment:
+      MONGO_INITDB_ROOT_USERNAME: ${MONGO_ROOT_USERNAME}
+      MONGO_INITDB_ROOT_PASSWORD: ${MONGO_ROOT_PASSWORD}
+      MONGO_INITDB_DATABASE: ${MONGO_DATABASE}
+    volumes:
+      - mongodb_data:/data/db
+      - ./mongodb/mongod.conf:/etc/mongod.conf
+    networks:
+      - arcade-network
+    restart: unless-stopped
+
+  # MinIO Object Storage
+  minio:
+    image: minio/minio:latest
+    container_name: arcade-minio
+    ports:
+      - "9000:9000"
+      - "9001:9001"
+    environment:
+      MINIO_ROOT_USER: minioadmin
+      MINIO_ROOT_PASSWORD: minioadmin123
+    volumes:
+      - minio_data:/data
+    networks:
+      - arcade-network
+    restart: unless-stopped
+    command: server /data --console-address ":9001"
+
+volumes:
+  mysql_data:
+    driver: local
+  redis_data:
+    driver: local
+  mongodb_data:
+    driver: local
+  minio_data:
+    driver: local
+
+networks:
+  arcade-network:
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 172.20.0.0/16
+```
+
+#### 启动服务
+
+```bash
+# 启动所有服务
+docker-compose up -d
+
+# 查看服务状态
+docker-compose ps
+
+# 查看日志
+docker-compose logs -f arcade-server
+
+# 停止服务
+docker-compose down
+```
+
+### 2. Kubernetes 部署
+
+#### 命名空间配置
+
+```yaml
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: arcade
+  labels:
+    name: arcade
+```
+
+#### ConfigMap 配置
+
+```yaml
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: arcade-config
+  namespace: arcade
+data:
+  config.toml: |
+    [log]
+    output = "stdout"
+    level = "INFO"
+    path = "/app/logs"
+    filename = "arcade.log"
+    keepHours = 24
+    rotateNum = 7
+    rotateSize = 256
+
+    [grpc]
+    host = "0.0.0.0"
+    port = 9090
+    maxConnections = 1000
+    maxQPS = 1000
+    readWriteTimeout = 5
+
+    [http]
+    host = "0.0.0.0"
+    port = 8080
+    mode = "release"
+    heartbeat = 60
+    pprof = false
+    exposeMetrics = true
+    accessLog = true
+    UseFileAssets = true
+    readTimeout = 60
+    writeTimeout = 60
+    idleTimeout = 60
+    shutdownTimeout = 30
+    bodyLimit = 104857600
+
+    [http.auth]
+    accessExpire = 3600
+    refreshExpire = 7200
+    secretKey = "your-jwt-secret-key"
+
+    [database]
+    type = "mysql"
+    host = "mysql-service"
+    port = "3306"
+    user = "arcade"
+    password = "your-mysql-password"
+    db = "arcade"
+    output = false
+    maxOpenConns = 500
+    maxIdleConns = 5
+    maxLifeTime = 300
+    maxIdleTime = 60
+
+    [database.mongodb]
+    uri = "mongodb://arcade:your-mongodb-password@mongodb-service:27017"
+    compressors = ["snappy", "zstd", "zlib"]
+    db = "arcade"
+    poolSize = 100
+
+    [redis]
+    mode = "single"
+    address = "redis-service:6379"
+    password = "your-redis-password"
+    db = 0
+    poolSize = 50
+    dialTimeout = 10
+    readTimeout = 10
+    writeTimeout = 10
+
+    [job]
+    maxWorkers = 0
+    queueSize = 0
+    workerTimeout = 1800
+
+    [plugin]
+    cacheDir = "/app/plugins"
+```
+
+#### Secret 配置
+
+```yaml
+apiVersion: v1
+kind: Secret
+metadata:
+  name: arcade-secrets
+  namespace: arcade
+type: Opaque
+data:
+  mysql-password: eW91ci1teXNxbC1wYXNzd29yZA==  # base64 encoded
+  redis-password: eW91ci1yZWRpcy1wYXNzd29yZA==  # base64 encoded
+  mongodb-password: eW91ci1tb25nb2RiLXBhc3N3b3Jk  # base64 encoded
+  jwt-secret-key: eW91ci1qd3Qtc2VjcmV0LWtleQ==  # base64 encoded
+```
+
+#### PersistentVolume 配置
+
+```yaml
+apiVersion: v1
+kind: PersistentVolume
+metadata:
+  name: arcade-data-pv
+spec:
+  capacity:
+    storage: 100Gi
+  accessModes:
+    - ReadWriteMany
+  persistentVolumeReclaimPolicy: Retain
+  storageClassName: arcade-storage
+  hostPath:
+    path: /opt/arcade/data
+
+---
+apiVersion: v1
+kind: PersistentVolume
+metadata:
+  name: arcade-plugins-pv
+spec:
+  capacity:
+    storage: 50Gi
+  accessModes:
+    - ReadWriteMany
+  persistentVolumeReclaimPolicy: Retain
+  storageClassName: arcade-storage
+  hostPath:
+    path: /opt/arcade/plugins
+
+---
+apiVersion: v1
+kind: PersistentVolume
+metadata:
+  name: arcade-logs-pv
+spec:
+  capacity:
+    storage: 20Gi
+  accessModes:
+    - ReadWriteMany
+  persistentVolumeReclaimPolicy: Retain
+  storageClassName: arcade-storage
+  hostPath:
+    path: /opt/arcade/logs
+```
+
+#### PersistentVolumeClaim 配置
+
+```yaml
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: arcade-data-pvc
+  namespace: arcade
+spec:
+  accessModes:
+    - ReadWriteMany
+  resources:
+    requests:
+      storage: 100Gi
+  storageClassName: arcade-storage
+
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: arcade-plugins-pvc
+  namespace: arcade
+spec:
+  accessModes:
+    - ReadWriteMany
+  resources:
+    requests:
+      storage: 50Gi
+  storageClassName: arcade-storage
+
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: arcade-logs-pvc
+  namespace: arcade
+spec:
+  accessModes:
+    - ReadWriteMany
+  resources:
+    requests:
+      storage: 20Gi
+  storageClassName: arcade-storage
+```
+
+#### Deployment 配置
+
+```yaml
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: arcade-server
+  namespace: arcade
+  labels:
+    app: arcade-server
+spec:
+  replicas: 3
+  selector:
+    matchLabels:
+      app: arcade-server
+  template:
+    metadata:
+      labels:
+        app: arcade-server
+    spec:
+      containers:
+      - name: arcade-server
+        image: arcade:latest
+        ports:
+        - containerPort: 8080
+          name: http
+        - containerPort: 9090
+          name: grpc
+        env:
+        - name: DATABASE_HOST
+          value: "mysql-service"
+        - name: DATABASE_PORT
+          value: "3306"
+        - name: DATABASE_USER
+          value: "arcade"
+        - name: DATABASE_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: arcade-secrets
+              key: mysql-password
+        - name: DATABASE_NAME
+          value: "arcade"
+        - name: REDIS_HOST
+          value: "redis-service"
+        - name: REDIS_PORT
+          value: "6379"
+        - name: REDIS_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: arcade-secrets
+              key: redis-password
+        - name: MONGODB_HOST
+          value: "mongodb-service"
+        - name: MONGODB_PORT
+          value: "27017"
+        - name: MONGODB_USERNAME
+          value: "arcade"
+        - name: MONGODB_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: arcade-secrets
+              key: mongodb-password
+        - name: MONGODB_DATABASE
+          value: "arcade"
+        - name: JWT_SECRET_KEY
+          valueFrom:
+            secretKeyRef:
+              name: arcade-secrets
+              key: jwt-secret-key
+        resources:
+          requests:
+            memory: "1Gi"
+            cpu: "500m"
+          limits:
+            memory: "2Gi"
+            cpu: "1000m"
+        livenessProbe:
+          httpGet:
+            path: /health
+            port: 8080
+          initialDelaySeconds: 30
+          periodSeconds: 10
+          timeoutSeconds: 5
+          failureThreshold: 3
+        readinessProbe:
+          httpGet:
+            path: /health
+            port: 8080
+          initialDelaySeconds: 5
+          periodSeconds: 5
+          timeoutSeconds: 3
+          failureThreshold: 3
+        volumeMounts:
+        - name: config
+          mountPath: /app/conf.d
+        - name: plugins
+          mountPath: /app/plugins
+        - name: logs
+          mountPath: /app/logs
+        - name: data
+          mountPath: /app/data
+      volumes:
+      - name: config
+        configMap:
+          name: arcade-config
+      - name: plugins
+        persistentVolumeClaim:
+          claimName: arcade-plugins-pvc
+      - name: logs
+        persistentVolumeClaim:
+          claimName: arcade-logs-pvc
+      - name: data
+        persistentVolumeClaim:
+          claimName: arcade-data-pvc
+      restartPolicy: Always
+```
+
+#### Service 配置
+
+```yaml
+apiVersion: v1
+kind: Service
+metadata:
+  name: arcade-service
+  namespace: arcade
+  labels:
+    app: arcade-server
+spec:
+  selector:
+    app: arcade-server
+  ports:
+  - name: http
+    port: 8080
+    targetPort: 8080
+    protocol: TCP
+  - name: grpc
+    port: 9090
+    targetPort: 9090
+    protocol: TCP
+  type: ClusterIP
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: mysql-service
+  namespace: arcade
+spec:
+  selector:
+    app: mysql
+  ports:
+  - port: 3306
+    targetPort: 3306
+    protocol: TCP
+  type: ClusterIP
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: redis-service
+  namespace: arcade
+spec:
+  selector:
+    app: redis
+  ports:
+  - port: 6379
+    targetPort: 6379
+    protocol: TCP
+  type: ClusterIP
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: mongodb-service
+  namespace: arcade
+spec:
+  selector:
+    app: mongodb
+  ports:
+  - port: 27017
+    targetPort: 27017
+    protocol: TCP
+  type: ClusterIP
+```
+
+#### Ingress 配置
+
+```yaml
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: arcade-ingress
+  namespace: arcade
+  annotations:
+    nginx.ingress.kubernetes.io/rewrite-target: /
+    nginx.ingress.kubernetes.io/ssl-redirect: "true"
+    nginx.ingress.kubernetes.io/force-ssl-redirect: "true"
+    nginx.ingress.kubernetes.io/proxy-body-size: "100m"
+    nginx.ingress.kubernetes.io/proxy-read-timeout: "300"
+    nginx.ingress.kubernetes.io/proxy-send-timeout: "300"
+spec:
+  tls:
+  - hosts:
+    - arcade.example.com
+    secretName: arcade-tls
+  rules:
+  - host: arcade.example.com
+    http:
+      paths:
+      - path: /
+        pathType: Prefix
+        backend:
+          service:
+            name: arcade-service
+            port:
+              number: 8080
+```
+
+#### 部署脚本
+
+```bash
+#!/bin/bash
+
+# 设置变量
+NAMESPACE="arcade"
+RELEASE_NAME="arcade"
+
+# 创建命名空间
+kubectl create namespace $NAMESPACE
+
+# 应用配置
+kubectl apply -f namespace.yaml
+kubectl apply -f configmap.yaml
+kubectl apply -f secret.yaml
+kubectl apply -f pv.yaml
+kubectl apply -f pvc.yaml
+kubectl apply -f deployment.yaml
+kubectl apply -f service.yaml
+kubectl apply -f ingress.yaml
+
+# 等待部署完成
+kubectl wait --for=condition=available --timeout=300s deployment/arcade-server -n $NAMESPACE
+
+# 检查状态
+kubectl get pods -n $NAMESPACE
+kubectl get services -n $NAMESPACE
+kubectl get ingress -n $NAMESPACE
+
+echo "Arcade deployment completed!"
+```
+
+### 3. 高可用部署
+
+#### 负载均衡配置
+
+```yaml
+apiVersion: v1
+kind: Service
+metadata:
+  name: arcade-service-lb
+  namespace: arcade
+  annotations:
+    service.beta.kubernetes.io/aws-load-balancer-type: "nlb"
+    service.beta.kubernetes.io/aws-load-balancer-cross-zone-load-balancing-enabled: "true"
+spec:
+  selector:
+    app: arcade-server
+  ports:
+  - name: http
+    port: 80
+    targetPort: 8080
+    protocol: TCP
+  - name: https
+    port: 443
+    targetPort: 8080
+    protocol: TCP
+  type: LoadBalancer
+```
+
+#### 数据库高可用
+
+```yaml
+# MySQL 主从配置
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: mysql-primary
+  namespace: arcade
+spec:
+  serviceName: mysql-primary
+  replicas: 1
+  selector:
+    matchLabels:
+      app: mysql-primary
+  template:
+    metadata:
+      labels:
+        app: mysql-primary
+    spec:
+      containers:
+      - name: mysql
+        image: mysql:8.0
+        env:
+        - name: MYSQL_ROOT_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: mysql-secrets
+              key: root-password
+        - name: MYSQL_REPLICATION_MODE
+          value: "master"
+        - name: MYSQL_REPLICATION_USER
+          value: "replicator"
+        - name: MYSQL_REPLICATION_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: mysql-secrets
+              key: replication-password
+        ports:
+        - containerPort: 3306
+        volumeMounts:
+        - name: mysql-data
+          mountPath: /var/lib/mysql
+        - name: mysql-config
+          mountPath: /etc/mysql/conf.d
+      volumes:
+      - name: mysql-config
+        configMap:
+          name: mysql-config
+  volumeClaimTemplates:
+  - metadata:
+      name: mysql-data
+    spec:
+      accessModes: ["ReadWriteOnce"]
+      resources:
+        requests:
+          storage: 100Gi
+```
+
+## 监控和运维
+
+### 1. Prometheus 监控
+
+#### Prometheus 配置
+
+```yaml
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: prometheus-config
+  namespace: arcade
+data:
+  prometheus.yml: |
+    global:
+      scrape_interval: 15s
+      evaluation_interval: 15s
+
+    rule_files:
+      - "arcade_rules.yml"
+
+    scrape_configs:
+      - job_name: 'arcade-server'
+        static_configs:
+          - targets: ['arcade-service:8080']
+        metrics_path: '/metrics'
+        scrape_interval: 30s
+
+      - job_name: 'mysql'
+        static_configs:
+          - targets: ['mysql-exporter:9104']
+
+      - job_name: 'redis'
+        static_configs:
+          - targets: ['redis-exporter:9121']
+
+      - job_name: 'mongodb'
+        static_configs:
+          - targets: ['mongodb-exporter:9216']
+
+      - job_name: 'node-exporter'
+        static_configs:
+          - targets: ['node-exporter:9100']
+
+  arcade_rules.yml: |
+    groups:
+    - name: arcade
+      rules:
+      - alert: ArcadeServerDown
+        expr: up{job="arcade-server"} == 0
+        for: 1m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Arcade server is down"
+          description: "Arcade server has been down for more than 1 minute"
+
+      - alert: HighTaskFailureRate
+        expr: rate(arcade_tasks_failed_total[5m]) > 0.1
+        for: 2m
+        labels:
+          severity: warning
+        annotations:
+          summary: "High task failure rate"
+          description: "Task failure rate is {{ $value }} failures per second"
+
+      - alert: HighMemoryUsage
+        expr: (node_memory_MemTotal_bytes - node_memory_MemAvailable_bytes) / node_memory_MemTotal_bytes > 0.9
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "High memory usage"
+          description: "Memory usage is above 90%"
+```
+
+#### Grafana 仪表板
+
+```json
+{
+  "dashboard": {
+    "id": null,
+    "title": "Arcade CI/CD Platform",
+    "tags": ["arcade", "cicd"],
+    "style": "dark",
+    "timezone": "browser",
+    "panels": [
+      {
+        "id": 1,
+        "title": "Task Execution Rate",
+        "type": "stat",
+        "targets": [
+          {
+            "expr": "rate(arcade_tasks_completed_total[5m])",
+            "legendFormat": "Tasks/sec"
+          }
+        ],
+        "fieldConfig": {
+          "defaults": {
+            "color": {
+              "mode": "palette-classic"
+            },
+            "custom": {
+              "hideFrom": {
+                "legend": false,
+                "tooltip": false,
+                "vis": false
+              }
+            }
+          }
+        }
+      },
+      {
+        "id": 2,
+        "title": "Task Success Rate",
+        "type": "stat",
+        "targets": [
+          {
+            "expr": "rate(arcade_tasks_completed_total[5m]) / (rate(arcade_tasks_completed_total[5m]) + rate(arcade_tasks_failed_total[5m])) * 100",
+            "legendFormat": "Success Rate %"
+          }
+        ]
+      },
+      {
+        "id": 3,
+        "title": "Active Agents",
+        "type": "stat",
+        "targets": [
+          {
+            "expr": "arcade_agents_online_total",
+            "legendFormat": "Online Agents"
+          }
+        ]
+      },
+      {
+        "id": 4,
+        "title": "Pipeline Execution Time",
+        "type": "graph",
+        "targets": [
+          {
+            "expr": "histogram_quantile(0.95, rate(arcade_pipeline_duration_seconds_bucket[5m]))",
+            "legendFormat": "95th percentile"
+          },
+          {
+            "expr": "histogram_quantile(0.50, rate(arcade_pipeline_duration_seconds_bucket[5m]))",
+            "legendFormat": "50th percentile"
+          }
+        ]
+      }
+    ],
+    "time": {
+      "from": "now-1h",
+      "to": "now"
+    },
+    "refresh": "30s"
+  }
+}
+```
+
+### 2. 日志管理
+
+#### ELK Stack 配置
+
+```yaml
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: elasticsearch
+  namespace: arcade
+spec:
+  replicas: 3
+  selector:
+    matchLabels:
+      app: elasticsearch
+  template:
+    metadata:
+      labels:
+        app: elasticsearch
+    spec:
+      containers:
+      - name: elasticsearch
+        image: elasticsearch:8.8.0
+        env:
+        - name: discovery.type
+          value: "single-node"
+        - name: ES_JAVA_OPTS
+          value: "-Xms2g -Xmx2g"
+        ports:
+        - containerPort: 9200
+        volumeMounts:
+        - name: elasticsearch-data
+          mountPath: /usr/share/elasticsearch/data
+      volumes:
+      - name: elasticsearch-data
+        persistentVolumeClaim:
+          claimName: elasticsearch-pvc
+
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: kibana
+  namespace: arcade
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: kibana
+  template:
+    metadata:
+      labels:
+        app: kibana
+    spec:
+      containers:
+      - name: kibana
+        image: kibana:8.8.0
+        env:
+        - name: ELASTICSEARCH_HOSTS
+          value: "http://elasticsearch:9200"
+        ports:
+        - containerPort: 5601
+
+---
+apiVersion: apps/v1
+kind: DaemonSet
+metadata:
+  name: filebeat
+  namespace: arcade
+spec:
+  selector:
+    matchLabels:
+      app: filebeat
+  template:
+    metadata:
+      labels:
+        app: filebeat
+    spec:
+      containers:
+      - name: filebeat
+        image: elastic/filebeat:8.8.0
+        env:
+        - name: ELASTICSEARCH_HOSTS
+          value: "http://elasticsearch:9200"
+        volumeMounts:
+        - name: filebeat-config
+          mountPath: /usr/share/filebeat/filebeat.yml
+          subPath: filebeat.yml
+        - name: varlog
+          mountPath: /var/log
+        - name: varlibdockercontainers
+          mountPath: /var/lib/docker/containers
+          readOnly: true
+      volumes:
+      - name: filebeat-config
+        configMap:
+          name: filebeat-config
+      - name: varlog
+        hostPath:
+          path: /var/log
+      - name: varlibdockercontainers
+        hostPath:
+          path: /var/lib/docker/containers
+```
+
+### 3. 备份和恢复
+
+#### 数据库备份
+
+```bash
+#!/bin/bash
+
+# MySQL 备份
+mysqldump -h mysql-service -u root -p$MYSQL_ROOT_PASSWORD \
+  --single-transaction \
+  --routines \
+  --triggers \
+  --all-databases > mysql_backup_$(date +%Y%m%d_%H%M%S).sql
+
+# MongoDB 备份
+mongodump --host mongodb-service:27017 \
+  --username $MONGO_ROOT_USERNAME \
+  --password $MONGO_ROOT_PASSWORD \
+  --out mongodb_backup_$(date +%Y%m%d_%H%M%S)
+
+# Redis 备份
+redis-cli -h redis-service -p 6379 -a $REDIS_PASSWORD \
+  --rdb redis_backup_$(date +%Y%m%d_%H%M%S).rdb
+
+# 上传到对象存储
+aws s3 cp mysql_backup_*.sql s3://arcade-backups/mysql/
+aws s3 cp mongodb_backup_* s3://arcade-backups/mongodb/ --recursive
+aws s3 cp redis_backup_*.rdb s3://arcade-backups/redis/
+```
+
+#### 自动备份 CronJob
+
+```yaml
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: arcade-backup
+  namespace: arcade
+spec:
+  schedule: "0 2 * * *"  # 每天凌晨2点执行
+  jobTemplate:
+    spec:
+      template:
+        spec:
+          containers:
+          - name: backup
+            image: mysql:8.0
+            command:
+            - /bin/bash
+            - -c
+            - |
+              # MySQL 备份
+              mysqldump -h mysql-service -u root -p$MYSQL_ROOT_PASSWORD \
+                --single-transaction --routines --triggers \
+                --all-databases > /backup/mysql_backup_$(date +%Y%m%d_%H%M%S).sql
+              
+              # 上传到 S3
+              aws s3 cp /backup/mysql_backup_*.sql s3://arcade-backups/mysql/
+              
+              # 清理本地备份文件
+              rm /backup/mysql_backup_*.sql
+            env:
+            - name: MYSQL_ROOT_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: arcade-secrets
+                  key: mysql-password
+            - name: AWS_ACCESS_KEY_ID
+              valueFrom:
+                secretKeyRef:
+                  name: aws-secrets
+                  key: access-key-id
+            - name: AWS_SECRET_ACCESS_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: aws-secrets
+                  key: secret-access-key
+            volumeMounts:
+            - name: backup-storage
+              mountPath: /backup
+          volumes:
+          - name: backup-storage
+            persistentVolumeClaim:
+              claimName: backup-pvc
+          restartPolicy: OnFailure
+```
+
+## 安全配置
+
+### 1. 网络安全
+
+#### NetworkPolicy 配置
+
+```yaml
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: arcade-network-policy
+  namespace: arcade
+spec:
+  podSelector:
+    matchLabels:
+      app: arcade-server
+  policyTypes:
+  - Ingress
+  - Egress
+  ingress:
+  - from:
+    - namespaceSelector:
+        matchLabels:
+          name: ingress-nginx
+    ports:
+    - protocol: TCP
+      port: 8080
+  egress:
+  - to:
+    - podSelector:
+        matchLabels:
+          app: mysql
+    ports:
+    - protocol: TCP
+      port: 3306
+  - to:
+    - podSelector:
+        matchLabels:
+          app: redis
+    ports:
+    - protocol: TCP
+      port: 6379
+  - to:
+    - podSelector:
+        matchLabels:
+          app: mongodb
+    ports:
+    - protocol: TCP
+      port: 27017
+```
+
+### 2. 认证授权
+
+#### RBAC 配置
+
+```yaml
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: arcade-service-account
+  namespace: arcade
+
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  namespace: arcade
+  name: arcade-role
+rules:
+- apiGroups: [""]
+  resources: ["pods", "services", "configmaps", "secrets"]
+  verbs: ["get", "list", "watch"]
+- apiGroups: ["apps"]
+  resources: ["deployments", "replicasets"]
+  verbs: ["get", "list", "watch"]
+
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: arcade-role-binding
+  namespace: arcade
+subjects:
+- kind: ServiceAccount
+  name: arcade-service-account
+  namespace: arcade
+roleRef:
+  kind: Role
+  name: arcade-role
+  apiGroup: rbac.authorization.k8s.io
+```
+
+### 3. 数据加密
+
+#### 数据加密配置
+
+```yaml
+apiVersion: v1
+kind: Secret
+metadata:
+  name: arcade-encryption-key
+  namespace: arcade
+type: Opaque
+data:
+  encryption-key: <base64-encoded-encryption-key>
+
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: arcade-encryption-config
+  namespace: arcade
+data:
+  encryption.yaml: |
+    encryption:
+      enabled: true
+      key: "encryption-key"
+      algorithm: "AES-256-GCM"
+      key_rotation: true
+      rotation_interval: "30d"
+```
+
+## 故障排除
+
+### 1. 常见问题
+
+#### 服务启动失败
+```bash
+# 检查 Pod 状态
+kubectl get pods -n arcade
+
+# 查看 Pod 日志
+kubectl logs -f deployment/arcade-server -n arcade
+
+# 检查事件
+kubectl get events -n arcade --sort-by='.lastTimestamp'
+```
+
+#### 数据库连接失败
+```bash
+# 检查数据库服务
+kubectl get svc -n arcade
+
+# 测试数据库连接
+kubectl exec -it deployment/arcade-server -n arcade -- \
+  mysql -h mysql-service -u arcade -p
+
+# 检查数据库日志
+kubectl logs -f deployment/mysql -n arcade
+```
+
+#### 性能问题
+```bash
+# 检查资源使用情况
+kubectl top pods -n arcade
+
+# 检查节点资源
+kubectl top nodes
+
+# 查看 Prometheus 指标
+curl http://arcade-service:8080/metrics
+```
+
+### 2. 监控告警
+
+#### 告警规则
+
+```yaml
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: arcade-alerts
+  namespace: arcade
+spec:
+  groups:
+  - name: arcade.rules
+    rules:
+    - alert: ArcadeServerDown
+      expr: up{job="arcade-server"} == 0
+      for: 1m
+      labels:
+        severity: critical
+      annotations:
+        summary: "Arcade server is down"
+        description: "Arcade server has been down for more than 1 minute"
+
+    - alert: HighTaskFailureRate
+      expr: rate(arcade_tasks_failed_total[5m]) > 0.1
+      for: 2m
+      labels:
+        severity: warning
+      annotations:
+        summary: "High task failure rate"
+        description: "Task failure rate is {{ $value }} failures per second"
+
+    - alert: DatabaseConnectionFailure
+      expr: mysql_up == 0
+      for: 30s
+      labels:
+        severity: critical
+      annotations:
+        summary: "Database connection failed"
+        description: "Cannot connect to MySQL database"
+
+    - alert: HighMemoryUsage
+      expr: (node_memory_MemTotal_bytes - node_memory_MemAvailable_bytes) / node_memory_MemTotal_bytes > 0.9
+      for: 5m
+      labels:
+        severity: warning
+      annotations:
+        summary: "High memory usage"
+        description: "Memory usage is above 90%"
+```
+
+## 升级和维护
+
+### 1. 滚动升级
+
+```bash
+# 更新镜像
+kubectl set image deployment/arcade-server arcade-server=arcade:v1.1.0 -n arcade
+
+# 查看升级状态
+kubectl rollout status deployment/arcade-server -n arcade
+
+# 回滚升级
+kubectl rollout undo deployment/arcade-server -n arcade
+```
+
+### 2. 配置更新
+
+```bash
+# 更新 ConfigMap
+kubectl apply -f configmap.yaml -n arcade
+
+# 重启 Pod 应用新配置
+kubectl rollout restart deployment/arcade-server -n arcade
+```
+
+### 3. 数据迁移
+
+```bash
+# 备份数据
+kubectl exec -it deployment/mysql -n arcade -- \
+  mysqldump -u root -p$MYSQL_ROOT_PASSWORD --all-databases > backup.sql
+
+# 执行迁移脚本
+kubectl exec -it deployment/arcade-server -n arcade -- \
+  ./migrate --config=/app/conf.d/config.toml
+
+# 验证迁移结果
+kubectl exec -it deployment/arcade-server -n arcade -- \
+  ./verify --config=/app/conf.d/config.toml
+```
+
+## 最佳实践
+
+### 1. 资源管理
+- 合理设置资源请求和限制
+- 使用 HPA 自动扩缩容
+- 监控资源使用情况
+
+### 2. 安全实践
+- 使用 TLS 加密通信
+- 定期轮换密钥和密码
+- 实施最小权限原则
+
+### 3. 备份策略
+- 定期备份数据库
+- 测试恢复流程
+- 异地备份重要数据
+
+### 4. 监控告警
+- 设置关键指标告警
+- 建立故障响应流程
+- 定期演练故障恢复
+
+通过以上部署指南，您可以在生产环境中成功部署和运维 Arcade CI/CD 平台。

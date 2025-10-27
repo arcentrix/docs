@@ -1,0 +1,580 @@
+---
+title: "API Reference"
+description: "Arcade CI/CD 平台完整的 API 参考文档"
+---
+
+# API 参考
+
+Arcade 提供 RESTful API 和 gRPC API 两种接口方式。
+
+## 基础信息
+
+### 基础 URL
+- **REST API**: `http://localhost:8080/api/v1`
+- **gRPC API**: `localhost:9090`
+
+### 认证方式
+- **JWT Token**: 在请求头中添加 `Authorization: Bearer <token>`
+- **API Key**: 在请求头中添加 `X-API-Key: <key>`
+
+### 数据格式
+- **请求格式**: JSON
+- **响应格式**: JSON
+- **错误格式**: JSON
+
+## REST API
+
+### 认证接口
+
+#### 用户登录
+```http
+POST /auth/login
+Content-Type: application/json
+
+{
+  "username": "admin",
+  "password": "password"
+}
+```
+
+**响应**:
+```json
+{
+  "success": true,
+  "data": {
+    "access_token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...",
+    "refresh_token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...",
+    "expires_in": 3600
+  }
+}
+```
+
+#### 刷新 Token
+```http
+POST /auth/refresh
+Content-Type: application/json
+
+{
+  "refresh_token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."
+}
+```
+
+### 流水线接口
+
+#### 创建流水线
+```http
+POST /pipelines
+Authorization: Bearer <token>
+Content-Type: application/json
+
+{
+  "name": "My Pipeline",
+  "description": "Pipeline description",
+  "repo_url": "https://github.com/user/repo",
+  "branch": "main",
+  "stages": [
+    {
+      "name": "build",
+      "jobs": [
+        {
+          "name": "build-job",
+          "commands": ["make build"],
+          "env": {"NODE_ENV": "production"}
+        }
+      ]
+    }
+  ],
+  "env": {
+    "GLOBAL_VAR": "value"
+  },
+  "trigger_type": "MANUAL"
+}
+```
+
+#### 获取流水线列表
+```http
+GET /pipelines?page=1&page_size=20&status=RUNNING
+Authorization: Bearer <token>
+```
+
+**响应**:
+```json
+{
+  "success": true,
+  "data": {
+    "pipelines": [
+      {
+        "pipeline_id": "pipeline_123",
+        "name": "My Pipeline",
+        "description": "Pipeline description",
+        "status": "RUNNING",
+        "created_at": 1640995200,
+        "updated_at": 1640995200
+      }
+    ],
+    "total": 1,
+    "page": 1,
+    "page_size": 20
+  }
+}
+```
+
+#### 获取流水线详情
+```http
+GET /pipelines/{pipeline_id}
+Authorization: Bearer <token>
+```
+
+#### 触发流水线
+```http
+POST /pipelines/{pipeline_id}/trigger
+Authorization: Bearer <token>
+Content-Type: application/json
+
+{
+  "branch": "feature/new-feature",
+  "commit_sha": "abc123",
+  "env": {
+    "DEPLOY_ENV": "staging"
+  },
+  "triggered_by": "user123"
+}
+```
+
+#### 停止流水线
+```http
+POST /pipelines/{pipeline_id}/stop
+Authorization: Bearer <token>
+Content-Type: application/json
+
+{
+  "run_id": "run_123",
+  "reason": "Manual stop"
+}
+```
+
+### 任务接口
+
+#### 获取任务列表
+```http
+GET /tasks?pipeline_id=pipeline_123&status=RUNNING
+Authorization: Bearer <token>
+```
+
+#### 获取任务详情
+```http
+GET /tasks/{task_id}
+Authorization: Bearer <token>
+```
+
+#### 获取任务日志
+```http
+GET /tasks/{task_id}/logs?offset=0&limit=100
+Authorization: Bearer <token>
+```
+
+**响应**:
+```json
+{
+  "success": true,
+  "data": {
+    "logs": [
+      {
+        "timestamp": 1640995200,
+        "level": "INFO",
+        "content": "Starting build process...",
+        "line_number": 1
+      }
+    ],
+    "total": 100,
+    "offset": 0,
+    "limit": 100
+  }
+}
+```
+
+#### 取消任务
+```http
+POST /tasks/{task_id}/cancel
+Authorization: Bearer <token>
+Content-Type: application/json
+
+{
+  "reason": "User requested cancellation"
+}
+```
+
+### Agent 接口
+
+#### 获取 Agent 列表
+```http
+GET /agents?status=ONLINE&labels=env:production
+Authorization: Bearer <token>
+```
+
+**响应**:
+```json
+{
+  "success": true,
+  "data": {
+    "agents": [
+      {
+        "agent_id": "agent_123",
+        "hostname": "build-server-1",
+        "ip": "192.168.1.100",
+        "os": "linux",
+        "arch": "amd64",
+        "version": "1.0.0",
+        "status": "ONLINE",
+        "labels": {
+          "env": "production",
+          "region": "us-west"
+        },
+        "running_jobs_count": 2,
+        "max_concurrent_jobs": 10
+      }
+    ],
+    "total": 1
+  }
+}
+```
+
+#### 获取 Agent 详情
+```http
+GET /agents/{agent_id}
+Authorization: Bearer <token>
+```
+
+#### 更新 Agent 标签
+```http
+PUT /agents/{agent_id}/labels
+Authorization: Bearer <token>
+Content-Type: application/json
+
+{
+  "labels": {
+    "env": "staging",
+    "region": "us-east"
+  },
+  "merge": true
+}
+```
+
+### 插件接口
+
+#### 获取插件列表
+```http
+GET /plugins?type=ci
+Authorization: Bearer <token>
+```
+
+#### 上传插件
+```http
+POST /plugins/upload
+Authorization: Bearer <token>
+Content-Type: multipart/form-data
+
+file: <plugin_binary>
+```
+
+#### 获取插件详情
+```http
+GET /plugins/{plugin_id}
+Authorization: Bearer <token>
+```
+
+### 存储接口
+
+#### 获取存储配置
+```http
+GET /storage/configs
+Authorization: Bearer <token>
+```
+
+#### 创建存储配置
+```http
+POST /storage/configs
+Authorization: Bearer <token>
+Content-Type: application/json
+
+{
+  "name": "my-s3",
+  "provider": "s3",
+  "config": {
+    "endpoint": "s3.amazonaws.com",
+    "bucket": "my-bucket",
+    "region": "us-west-2"
+  }
+}
+```
+
+## gRPC API
+
+### Agent Service
+
+#### 注册 Agent
+```protobuf
+rpc Register(RegisterRequest) returns (RegisterResponse);
+
+message RegisterRequest {
+  string agent_id = 1;
+  string hostname = 2;
+  string ip = 3;
+  string os = 4;
+  string arch = 5;
+  string version = 6;
+  int32 max_concurrent_jobs = 7;
+  map<string, string> labels = 8;
+  repeated string installed_plugins = 9;
+}
+```
+
+#### 心跳
+```protobuf
+rpc Heartbeat(HeartbeatRequest) returns (HeartbeatResponse);
+
+message HeartbeatRequest {
+  string agent_id = 1;
+  AgentStatus status = 2;
+  int32 running_jobs_count = 3;
+  int32 max_concurrent_jobs = 4;
+  map<string, string> metrics = 5;
+  map<string, string> labels = 6;
+}
+```
+
+#### 拉取任务
+```protobuf
+rpc FetchTask(FetchTaskRequest) returns (FetchTaskResponse);
+
+message FetchTaskRequest {
+  string agent_id = 1;
+  int32 max_jobs = 2;
+  map<string, string> labels = 3;
+}
+```
+
+#### 上报任务状态
+```protobuf
+rpc ReportTaskStatus(ReportTaskStatusRequest) returns (ReportTaskStatusResponse);
+
+message ReportTaskStatusRequest {
+  string agent_id = 1;
+  string task_id = 2;
+  TaskStatus status = 3;
+  int32 exit_code = 4;
+  string error_message = 5;
+  int64 start_time = 6;
+  int64 end_time = 7;
+  map<string, string> metrics = 8;
+}
+```
+
+#### 上报任务日志
+```protobuf
+rpc ReportTaskLog(ReportTaskLogRequest) returns (ReportTaskLogResponse);
+
+message ReportTaskLogRequest {
+  string agent_id = 1;
+  string task_id = 2;
+  repeated LogEntry logs = 3;
+}
+
+message LogEntry {
+  int64 timestamp = 1;
+  string level = 2;
+  string content = 3;
+  int32 line_number = 4;
+}
+```
+
+### Pipeline Service
+
+#### 创建流水线
+```protobuf
+rpc CreatePipeline(CreatePipelineRequest) returns (CreatePipelineResponse);
+
+message CreatePipelineRequest {
+  string name = 1;
+  string description = 2;
+  string repo_url = 3;
+  string branch = 4;
+  repeated Stage stages = 5;
+  map<string, string> env = 6;
+  TriggerType trigger_type = 7;
+  string cron = 8;
+  string created_by = 9;
+}
+```
+
+#### 触发流水线
+```protobuf
+rpc TriggerPipeline(TriggerPipelineRequest) returns (TriggerPipelineResponse);
+
+message TriggerPipelineRequest {
+  string pipeline_id = 1;
+  string branch = 2;
+  string commit_sha = 3;
+  map<string, string> env = 4;
+  string triggered_by = 5;
+}
+```
+
+## WebSocket API
+
+### 实时日志流
+```javascript
+const ws = new WebSocket('ws://localhost:8080/ws/logs');
+
+ws.onopen = function() {
+  // 订阅任务日志
+  ws.send(JSON.stringify({
+    type: 'subscribe',
+    channel: 'task_logs',
+    task_id: 'task_123'
+  }));
+};
+
+ws.onmessage = function(event) {
+  const data = JSON.parse(event.data);
+  console.log('Log:', data.content);
+};
+```
+
+### 实时状态更新
+```javascript
+const ws = new WebSocket('ws://localhost:8080/ws/status');
+
+ws.onopen = function() {
+  // 订阅流水线状态
+  ws.send(JSON.stringify({
+    type: 'subscribe',
+    channel: 'pipeline_status',
+    pipeline_id: 'pipeline_123'
+  }));
+};
+
+ws.onmessage = function(event) {
+  const data = JSON.parse(event.data);
+  console.log('Status:', data.status);
+};
+```
+
+## 错误处理
+
+### 错误响应格式
+```json
+{
+  "success": false,
+  "error": {
+    "code": "VALIDATION_ERROR",
+    "message": "Invalid request parameters",
+    "details": {
+      "field": "name",
+      "reason": "required"
+    }
+  }
+}
+```
+
+### 常见错误码
+
+| 错误码 | HTTP 状态码 | 描述 |
+|--------|-------------|------|
+| `VALIDATION_ERROR` | 400 | 请求参数验证失败 |
+| `UNAUTHORIZED` | 401 | 未授权访问 |
+| `FORBIDDEN` | 403 | 禁止访问 |
+| `NOT_FOUND` | 404 | 资源不存在 |
+| `CONFLICT` | 409 | 资源冲突 |
+| `INTERNAL_ERROR` | 500 | 内部服务器错误 |
+| `SERVICE_UNAVAILABLE` | 503 | 服务不可用 |
+
+## 限流和配额
+
+### 限流规则
+- **API 调用**: 1000 次/分钟/用户
+- **文件上传**: 100MB/次
+- **并发任务**: 100 个/用户
+
+### 配额管理
+```http
+GET /quotas
+Authorization: Bearer <token>
+```
+
+**响应**:
+```json
+{
+  "success": true,
+  "data": {
+    "api_calls": {
+      "used": 500,
+      "limit": 1000,
+      "reset_at": 1640995200
+    },
+    "storage": {
+      "used": "1.5GB",
+      "limit": "10GB"
+    },
+    "concurrent_tasks": {
+      "used": 5,
+      "limit": 100
+    }
+  }
+}
+```
+
+## SDK 和客户端
+
+### Go SDK
+```go
+package main
+
+import (
+    "context"
+    "github.com/go-arcade/arcade-sdk-go"
+)
+
+func main() {
+    client := arcade.NewClient("http://localhost:8080", "your-token")
+    
+    pipeline, err := client.Pipelines.Create(context.Background(), &arcade.CreatePipelineRequest{
+        Name: "My Pipeline",
+        Description: "Pipeline description",
+    })
+    
+    if err != nil {
+        log.Fatal(err)
+    }
+    
+    fmt.Printf("Created pipeline: %s\n", pipeline.ID)
+}
+```
+
+### Python SDK
+```python
+import arcade
+
+client = arcade.Client("http://localhost:8080", "your-token")
+
+pipeline = client.pipelines.create(
+    name="My Pipeline",
+    description="Pipeline description"
+)
+
+print(f"Created pipeline: {pipeline.id}")
+```
+
+### JavaScript SDK
+```javascript
+import { ArcadeClient } from '@arcade/sdk-js';
+
+const client = new ArcadeClient('http://localhost:8080', 'your-token');
+
+const pipeline = await client.pipelines.create({
+  name: 'My Pipeline',
+  description: 'Pipeline description'
+});
+
+console.log(`Created pipeline: ${pipeline.id}`);
+```

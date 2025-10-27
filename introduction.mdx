@@ -1,0 +1,158 @@
+---
+title: "Introduction"
+description: "Arcade CI/CD 平台介绍和核心概念"
+---
+
+# Arcade CI/CD 平台介绍
+
+Arcade 是一个现代化的分布式 CI/CD 平台，专为云原生环境设计，提供强大的任务调度、流水线管理和插件扩展能力。
+
+## 什么是 Arcade？
+
+Arcade 是一个基于 gRPC 的分布式 CI/CD 平台，具有以下核心特性：
+
+- **分布式架构**: Server-Agent 架构，支持大规模任务执行
+- **智能调度**: 基于标签选择器的任务路由机制
+- **插件化**: 基于 HashiCorp go-plugin 的可扩展插件系统
+- **实时通信**: WebSocket 和 gRPC 双向流支持
+- **多存储**: 支持多种对象存储后端
+
+## 核心概念
+
+### Server (服务器)
+
+Arcade Server 是平台的核心组件，负责：
+
+- 任务调度和分发
+- 流水线管理
+- Agent 管理
+- 插件管理
+- 数据存储
+
+### Agent (代理)
+
+Arcade Agent 是任务执行组件，负责：
+
+- 接收和执行任务
+- 上报执行状态和日志
+- 管理本地插件
+- 动态更新标签
+
+### Pipeline (流水线)
+
+流水线定义了 CI/CD 的完整流程：
+
+- **Stage**: 流水线阶段
+- **Job**: 具体任务
+- **Dependency**: 任务依赖关系
+- **Artifact**: 构建产物
+
+### Plugin (插件)
+
+插件系统支持功能扩展：
+
+- **CI 插件**: 构建、测试、代码检查
+- **CD 插件**: 部署、回滚
+- **Security 插件**: 安全扫描
+- **Notify 插件**: 消息通知
+
+## 架构优势
+
+### 1. 高性能
+
+- 基于 Go 语言，性能优异
+- gRPC 通信，低延迟
+- 异步任务处理
+- 连接池和缓存优化
+
+### 2. 高可用
+
+- 分布式架构，无单点故障
+- Agent 自动故障转移
+- 任务重试机制
+- 健康检查和监控
+
+### 3. 可扩展
+
+- 水平扩展支持
+- 插件热加载
+- 动态标签管理
+- 多存储后端
+
+### 4. 易用性
+
+- RESTful API
+- Web UI 界面
+- CLI 工具
+- 丰富的文档
+
+## 使用场景
+
+### 1. 微服务 CI/CD
+
+- 多服务并行构建
+- 服务间依赖管理
+- 环境隔离部署
+
+### 2. 多环境管理
+
+- 开发、测试、生产环境
+- 环境配置管理
+- 部署策略控制
+
+### 3. 大规模团队协作
+
+- 多项目支持
+- 权限管理
+- 资源隔离
+
+### 4. 云原生部署
+
+- 容器化支持
+- Kubernetes 集成
+- 云存储支持
+
+## 快速开始
+
+### 1. 安装 Server
+
+```bash
+# 下载二进制文件
+wget https://github.com/go-arcade/arcade/releases/latest/download/arcade-linux-amd64
+
+# 运行 Server
+./arcade-linux-amd64 --conf conf.d/config.toml
+```
+
+### 2. 安装 Agent
+
+```bash
+# 下载 Agent
+wget https://github.com/go-arcade/arcade-agent/releases/latest/download/arcade-agent-linux-amd64
+
+# 运行 Agent
+./arcade-agent-linux-amd64 --conf conf.d/config.toml
+```
+
+### 3. 创建第一个流水线
+
+```yaml
+name: "Hello World Pipeline"
+description: "简单的 Hello World 流水线"
+
+stages:
+  - name: "build"
+    jobs:
+      - name: "hello-job"
+        commands:
+          - "echo 'Hello, Arcade!'"
+        env:
+          GREETING: "Hello"
+```
+
+## 下一步
+
+- [快速开始指南](/quickstart) - 5分钟快速体验
+- [架构设计](/architecture) - 深入了解系统架构
+- [API 参考](/api-reference) - 完整的 API 文档
+- [插件开发](/plugin-development) - 开发自定义插件
