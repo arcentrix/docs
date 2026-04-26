@@ -13,7 +13,7 @@
       {
         "language": "en",
         "default": true,
-        "openapi": "api-reference/openapi.json",
+        "openapi": "/en/api-reference/openapi.json",
         "tabs": [
           {
             "tab": "Guides",
@@ -68,7 +68,7 @@
       },
       {
         "language": "zh-Hans",
-        "openapi": "zh/api-reference/openapi.json",
+        "openapi": "/zh/api-reference/openapi.json",
         "tabs": [
           {
             "tab": "指南",
@@ -124,8 +124,8 @@
     ]
   },
   "logo": {
-    "light": "/logo/light.svg",
-    "dark": "/logo/light.svg"
+    "light": "/logo/logo.svg",
+    "dark": "/logo/logo.svg"
   },
   "navbar": {
     "links": [
