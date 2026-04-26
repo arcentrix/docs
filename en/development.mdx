@@ -1,94 +1,165 @@
 ---
-title: 'Development'
-description: 'Preview changes locally to update your docs'
+title: "Development"
+description: "Build, generate, lint, test, and release Arcentra."
 ---
 
-<Info>
-  **Prerequisites**:
-  - Node.js version 19 or higher
-  - A docs repository with a `docs.json` file
-</Info>
+This page describes the developer workflow for working in the Arcentra
+repository. All commands assume you are at the root of the
+[`arcentra`](https://github.com/arcentrix/arcentra) checkout.
 
-Follow these steps to install and run Mintlify on your operating system.
+## Toolchain
 
-<Steps>
-<Step title="Install the Mintlify CLI">
+- **Go** 1.25 or later (matches `go.mod`).
+- **Buf** — Protobuf and gRPC code generation. `make buf-install` installs
+  it on demand.
+- **Wire** — compile-time dependency injection. `make wire-install` installs
+  it on demand.
+- **golangci-lint v2** — installed automatically into `bin/` by
+  `make lint`.
+- **staticcheck** (optional) — `make staticcheck` installs and runs it.
+- **addlicense** (optional) — `make addlicense` adds Apache 2.0 headers to
+  Go files.
+- **Docker** (optional) — required for `make docker-build` and
+  `make docker-buildx`.
+
+## Make targets
+
+`make help` prints the full target list. The targets you reach for most
+often are:
+
+| Target | What it does |
+| --- | --- |
+| `make deps` | `go mod tidy` and `go mod verify` |
+| `make codegen` | Run all code generators (Buf + Wire for both binaries) |
+| `make buf` | Generate gRPC/protobuf code |
+| `make wire TARGET=arcentra` | Generate Wire bindings for the control plane |
+| `make wire TARGET=arcentra-agent` | Generate Wire bindings for the agent |
+| `make build TARGET=<name>` | Build a binary; `<name>` matches a `cmd/` subdirectory |
+| `make build-target TARGET=<name>` | Release build with `-trimpath -s -w` (CI/Docker) |
+| `make run` | Run the control plane locally |
+| `make lint` | Install golangci-lint v2 and run linters |
+| `make fmt-check` | Verify formatting (excludes generated files) |
+| `make test` | `go test -race -count=1 ./...` |
+| `make staticcheck` | Run staticcheck across the module |
+| `make docker-build` | Build a Docker image with `docker buildkit` |
+| `make docker-buildx` | Multi-arch (`linux/arm64,linux/amd64`) build and push |
+| `make addlicense` | Add license headers to Go files |
+| `make version` | Print version, branch, commit, and build time |
+| `make version-tag` | Create and annotate `vX.Y.Z.W` git tag |
+
+The repository carries two binaries by default: `arcentra` (control plane)
+and `arcentra-agent`. Any directory inside `cmd/` can be built with
+`make build TARGET=<dirname>`.
+
+## Code generation
+
+Two generators are wired into the build:
+
+- **Buf** generates Go message and gRPC service code under `api/<service>/v1`.
+- **Wire** generates dependency-injection wiring (`wire_gen.go`) under
+  `cmd/arcentra/` and `cmd/arcentra-agent/`.
+
+Run `make codegen` after editing any `.proto` file or any `wire.go` file.
+
+## Testing
 
 ```bash
-npm i -g mint
+make test
 ```
-</Step>
 
-<Step title="Preview locally">
+This runs the full Go test suite with the race detector enabled. For a
+single package, run `go test -race ./internal/path/...` directly.
 
-Navigate to your docs directory where your `docs.json` file is located, and run the following command:
+## Configuration during development
+
+The default configuration files under `conf.d/` are tailored for local
+development:
+
+- `conf.d/config.toml` — control plane.
+- `conf.d/agent.toml` — agent.
+- `conf.d/plugins.toml` — plugins and builtins.
+
+`make run` starts the control plane against these defaults; you can also run
+`go run ./cmd/arcentra -conf <path>` and `go run ./cmd/arcentra-agent -conf
+<path>` directly.
+
+See [Configuration](/en/configuration) for a reference of every section.
+
+## Versioning and releases
+
+Arcentra uses a four-part **YY.Major.Minor.Patch** version scheme:
+
+- `YY` — last two digits of the year (`25` for 2025, `26` for 2026).
+- `Major` — incremented for architecture changes or breaking APIs.
+- `Minor` — incremented for new, backward-compatible features.
+- `Patch` — incremented for bug fixes and small adjustments.
+
+Examples:
+
+```
+25.0.0.0  -> initial release in 2025
+25.0.0.1  -> bug fix
+25.0.1.0  -> new feature (backward compatible)
+25.1.0.0  -> major change
+26.0.0.0  -> first release of 2026
+```
+
+### Choosing the version at build time
+
+The `Makefile` resolves the version in this order:
+
+1. The `VERSION` environment variable.
+2. A `VERSION` file at the repository root.
+3. An exact-match git tag (with the leading `v` stripped).
+4. Fallback to `<current-2-digit-year>.0.0.0`.
 
 ```bash
-mint dev
+# explicit
+VERSION=25.1.2.3 make build TARGET=arcentra
+
+# via VERSION file
+echo -n "25.1.2.3" > VERSION
+make build TARGET=arcentra
 ```
 
-A local preview of your documentation will be available at `http://localhost:3000`.
-
-</Step>
-</Steps>
-
-## Custom ports
-
-By default, Mintlify uses port 3000. You can customize the port Mintlify runs on by using the `--port` flag. For example, to run Mintlify on port 3333, use this command:
+### Tagging a release
 
 ```bash
-mint dev --port 3333
+export VERSION=25.1.2.3
+make version-tag
+git push origin v$VERSION
 ```
 
-If you attempt to run Mintlify on a port that's already in use, it will use the next available port:
+Tags follow the `vYY.Major.Minor.Patch` convention.
 
-```md
-Port 3000 is already in use. Trying 3001 instead.
+### Reading the version from Go
+
+```go
+import "github.com/arcentrix/arcentra/pkg/version"
+
+v := version.GetVersion()
+fmt.Println(v.Version)
+
+parsed, err := version.GetParsedVersion()
+if err != nil {
+    log.Fatal(err)
+}
+fmt.Printf("year=20%02d major=%d minor=%d patch=%d\n",
+    parsed.Year, parsed.Major, parsed.Minor, parsed.Patch)
 ```
 
-## Mintlify versions
+## Contributing
 
-Please note that each CLI release is associated with a specific version of Mintlify. If your local preview does not align with the production version, please update the CLI:
+Read
+[`CONTRIBUTING.md`](https://github.com/arcentrix/arcentra/blob/main/CONTRIBUTING.md)
+for the full process. In short:
 
-```bash
-npm mint update
-```
+1. Fork and branch from `main`.
+2. Run `make codegen`, `make lint`, and `make test` locally before opening a
+   PR.
+3. Add or update documentation in this site for any user-visible change.
+4. Reference the related issue and follow the project's commit and PR
+   conventions.
 
-## Validating links
-
-The CLI can assist with validating links in your documentation. To identify any broken links, use the following command:
-
-```bash
-mint broken-links
-```
-
-## Deployment
-
-If the deployment is successful, you should see the following:
-
-<Frame>
-  <img src="/images/checks-passed.png" alt="Screenshot of a deployment confirmation message that says All checks have passed." style={{ borderRadius: '0.5rem' }} />
-</Frame>
-
-## Code formatting
-
-We suggest using extensions on your IDE to recognize and format MDX. If you're a VSCode user, consider the [MDX VSCode extension](https://marketplace.visualstudio.com/items?itemName=unifiedjs.vscode-mdx) for syntax highlighting, and [Prettier](https://marketplace.visualstudio.com/items?itemName=esbenp.prettier-vscode) for code formatting.
-
-## Troubleshooting
-
-<AccordionGroup>
-  <Accordion title='Error: Could not load the "sharp" module using the darwin-arm64 runtime'>
-
-    This may be due to an outdated version of node. Try the following:
-    1. Remove the currently-installed version of the CLI: `npm remove -g mint`
-    2. Upgrade to Node v19 or higher.
-    3. Reinstall the CLI: `npm i -g mint`
-  </Accordion>
-
-  <Accordion title="Issue: Encountering an unknown error">
-  
-    Solution: Go to the root of your device and delete the `~/.mintlify` folder. Then run `mint dev` again.
-  </Accordion>
-</AccordionGroup>
-
-Curious about what changed in the latest CLI version? Check out the [CLI changelog](https://www.npmjs.com/package/mintlify?activeTab=versions).
+Security issues should be reported privately as described in
+[`SECURITY.md`](https://github.com/arcentrix/arcentra/blob/main/SECURITY.md).

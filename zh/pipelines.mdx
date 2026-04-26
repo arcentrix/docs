@@ -1,0 +1,236 @@
+---
+title: "流水线"
+description: "流水线模型、DSL、运行生命周期与 HTTP API。"
+---
+
+流水线是 Arcentra 中最主要的自动化单元。一个 Pipeline 是一份带版本的定义，
+描述如何完成构建、测试、交付或运维任务。每次执行会产生一个 `PipelineRun`。
+
+## 概念
+
+- **Pipeline**：与项目绑定的版本化定义，可内联存放，也可由 Git 仓库的
+  `pipeline.yaml` 提供。
+- **Stage**：一组按顺序执行的 Job。流水线可以显式声明多个 Stage，也可以使用
+  `jobs` 简写，由 Arcentra 自动包裹一个默认 Stage。
+- **Job**：调度到单个 Agent 的工作单元，声明执行的 Step、条件以及矩阵展开等。
+- **Step**：原子动作。Step 要么是 builtin（如 `shell`），要么通过
+  `uses + action + args` 调用插件。
+- **PipelineRun / JobRun / StepRun**：运行期对象，记录各自的状态、日志、产物
+  与时间线。
+- **Trigger**：`manual`、`cron`、`event`（Webhook）。可结合审批门控。
+
+## 状态枚举
+
+| 对象 | 状态 |
+| --- | --- |
+| PipelineRun | `pending`、`running`、`success`、`failed`、`cancelled`、`paused`、`partial` |
+| JobRun | `pending`、`queued`、`running`、`success`、`failed`、`cancelled` |
+| StepRun | `pending`、`queued`、`running`、`success`、`failed`、`cancelled`、`timeout`、`skipped` |
+
+## 流水线定义
+
+流水线以结构化 spec 的形式表达。两种支持的写法：
+
+```yaml
+namespace: demo.pipeline
+version: v1
+stages:
+  - name: build
+    jobs:
+      - name: build-go
+        steps:
+          - name: checkout
+            uses: actions/git-checkout@v1
+            args:
+              ref: ${{ trigger.ref }}
+          - name: compile
+            uses: actions/go-build@v1
+            args:
+              go_version: "1.25"
+```
+
+`jobs` 简写省略了 `stages`：
+
+```yaml
+namespace: demo.pipeline
+version: v1
+jobs:
+  - name: build
+    steps:
+      - name: compile
+        uses: actions/go-build@v1
+        args:
+          go_version: "1.25"
+```
+
+两种写法都可以同时声明 `Source`、`Approval`、`Target`、`Notify` 与
+`Triggers` 块。完整 schema 与 DSL 字段请参考源码仓库内的流水线文档。
+
+## HTTP API
+
+流水线 HTTP 接口位于控制平面 `/api/v1/pipelines` 之下。
+
+### 鉴权
+
+所有接口都需要 Bearer Token：
+
+```
+Authorization: Bearer <token>
+```
+
+请求与响应均为 `application/json`。
+
+### 响应封装
+
+带响应体的成功：
+
+```json
+{
+  "code": 0,
+  "msg": "success",
+  "detail": {},
+  "timestamp": 1730000000
+}
+```
+
+无响应体的成功：
+
+```json
+{
+  "code": 0,
+  "msg": "success",
+  "timestamp": 1730000000
+}
+```
+
+错误：
+
+```json
+{
+  "code": 400,
+  "errMsg": "xxx",
+  "path": "/api/v1/pipelines/...",
+  "timestamp": 1730000000
+}
+```
+
+### 接口列表
+
+#### 流水线管理
+
+- `POST /api/v1/pipelines`
+- `PUT /api/v1/pipelines/:pipelineId`
+- `GET /api/v1/pipelines/:pipelineId`
+- `GET /api/v1/pipelines`
+- `DELETE /api/v1/pipelines/:pipelineId`
+
+#### 定义文件
+
+- `GET /api/v1/pipelines/:pipelineId/spec`
+- `POST /api/v1/pipelines/:pipelineId/spec/validate`
+- `POST /api/v1/pipelines/:pipelineId/spec/save`
+
+#### 运行控制
+
+- `POST /api/v1/pipelines/:pipelineId/trigger`
+- `GET /api/v1/pipelines/:pipelineId/runs`
+- `GET /api/v1/pipelines/runs/:runId`
+- `POST /api/v1/pipelines/:pipelineId/runs/:runId/stop`
+- `POST /api/v1/pipelines/:pipelineId/runs/:runId/pause`
+- `POST /api/v1/pipelines/:pipelineId/runs/:runId/resume`
+
+### 常用请求体
+
+#### 创建流水线
+
+```json
+{
+  "projectId": "proj_xxx",
+  "name": "build-main",
+  "description": "main branch build",
+  "repoUrl": "https://github.com/org/repo.git",
+  "defaultBranch": "main",
+  "pipelineFilePath": ".arcentra/pipeline.yaml",
+  "saveMode": "pr",
+  "prTargetBranch": "main",
+  "metadata": { "owner": "devops" },
+  "createdBy": "user_xxx"
+}
+```
+
+#### 校验定义
+
+```json
+{
+  "spec": {
+    "namespace": "demo.pipeline",
+    "version": "v1",
+    "jobs": [
+      {
+        "name": "build",
+        "steps": [
+          {
+            "name": "compile",
+            "uses": "actions/go-build@v1",
+            "args": { "go_version": "1.25" }
+          }
+        ]
+      }
+    ]
+  },
+  "format": "yaml"
+}
+```
+
+#### 保存定义
+
+```json
+{
+  "spec": { /* 与校验相同的结构 */ },
+  "format": "yaml",
+  "expectedHeadCommitSha": "abc123",
+  "commitMessage": "update pipeline",
+  "requestId": "req-20260302-001",
+  "editor": "user_xxx"
+}
+```
+
+<Note>
+  定义类接口仅接受结构化 `spec`。历史的 `content` 文本字段已经移除。
+</Note>
+
+#### 触发流水线
+
+```json
+{
+  "variables": { "env": "prod" },
+  "triggeredBy": "user_xxx",
+  "requestId": "trigger-001"
+}
+```
+
+#### 暂停 / 恢复 / 停止
+
+```json
+{
+  "reason": "manual operation",
+  "operator": "user_xxx"
+}
+```
+
+### 枚举
+
+- `saveMode`：`direct`、`pr`
+- `format`：`json`、`yaml`、`yml`
+- 流水线状态：`pending`、`running`、`success`、`failed`、`cancelled`、
+  `paused`
+
+## 实时更新
+
+流水线、Job、Step 的实时事件通过两个通道暴露：
+
+- `GET /api/v1/ws` 提供日志与状态订阅的 WebSocket 网关。
+- gRPC 的 `stream.v1` 服务，面向服务端集成。
+
+WebSocket 消息格式以及 gRPC 流目录详见
+[API 参考](/zh/api-reference/introduction)。

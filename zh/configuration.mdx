@@ -1,0 +1,157 @@
+---
+title: "配置"
+description: "config.toml、agent.toml 与 plugins.toml 字段参考。"
+---
+
+仓库 `conf.d/` 目录下包含三份示例配置：
+
+| 文件 | 使用方 | 默认参数 |
+| --- | --- | --- |
+| `conf.d/config.toml` | 控制平面 | `-conf` |
+| `conf.d/agent.toml` | Agent | `-conf` |
+| `conf.d/plugins.toml` | 控制平面 | `-plugin-conf` |
+
+<Warning>
+  示例文件中包含占位的 JWT 密钥、Kafka SASL 密码、数据库凭证等敏感信息。
+  在本地开发环境之外使用前，请务必替换为真实值，并通过密钥管理或私有仓库
+  存储，不要提交到版本控制。
+</Warning>
+
+## 控制平面：`config.toml`
+
+控制平面配置由 `cmd/arcentra` 读取，HTTP、gRPC、调度与存储等子系统共享。
+
+### `[metrics]`
+
+Prometheus 兼容的指标端点。
+
+| 字段 | 说明 | 默认 |
+| --- | --- | --- |
+| `enable` | 是否启用 metrics 服务 | `true` |
+| `host` / `port` | 监听地址 | `0.0.0.0:8082` |
+| `path` | 抓取路径 | `/metrics` |
+
+### `[trace]` 与 `[trace.batch]`
+
+OpenTelemetry 链路追踪。
+
+- `exporterType`：`jaeger`、`otlp-grpc`、`otlp-http` 或 `none`。
+- `endpoint`、`insecure`、`headers`：导出器目标。
+- `[trace.batch]` 控制批量队列大小与超时；如果出现
+  `context deadline exceeded`，可以增大 `exportTimeout`。
+
+### `[events]` 与 `[messageQueue.kafka]`
+
+CloudEvents 发布与 Kafka 通道关键字段：
+
+- `[events].sourcePrefix`：事件 source 前缀。
+- `[messageQueue.kafka].bootstrapServers`：Kafka 集群地址。
+- `securityProtocol`：`PLAINTEXT`、`SSL`、`SASL_PLAINTEXT`、`SASL_SSL`。
+- `[messageQueue.kafka.sasl]`：SASL 的 `mechanism`、`username`、`password`。
+- `[messageQueue.kafka.ssl]`：启用 SSL 时的证书路径。
+
+### `[log]` 与 `[logger.*]`
+
+两种互补的日志方式：
+
+- `[log]`：单输出日志（`stdout`、`file` 或 `kafka`），支持按时间与大小滚动。
+- `[logger.*]`：通过 `logger.InitMulti` 启用多 category 日志，可为 HTTP、
+  插件、Cron 等单独配置输出与级别。
+
+### `[grpc]` 与 `[http]`
+
+| 段 | 关键字段 |
+| --- | --- |
+| `[grpc]` | `host`、`port`、`maxConnections`、`readWriteTimeout` |
+| `[http]` | `host`、`port`、`accessLog`、读/写/idle/shutdown 超时、`bodyLimit` |
+
+`[http.auth]` 用于 JWT 签发：
+
+- `accessExpire`、`refreshExpire` 支持 duration 字符串（`60m`、`1h`、`7d`）；
+  使用纯数字时按分钟解释，向后兼容。
+- `secretKey` 在部署到非本地环境前必须更换。
+
+### `[database]`
+
+通过 `driver` 选择 `mysql` 或 `sqlite`：
+
+- `[database.mysql].dsn`：完整 DSN，需要 `parseTime=True` 与字符集设置。
+- `[database.sqlite].dsn`：SQLite 文件路径，不适合生产控制平面。
+- `[database.options]`：连接池大小、最大生存/空闲时间，以及 SQL 日志开关
+  `output`。
+
+### `[redis]`
+
+支持 single、cluster、sentinel：
+
+- `mode`：`single` / `cluster` / `sentinel`。
+- `address`：单节点、集群多节点逗号分隔，或 sentinel 地址列表。
+- TLS、sentinel 凭证、`maxRedirects` 默认注释，按需启用。
+
+### `[taskQueue]`
+
+延迟任务队列。
+
+- `provider`：默认 `kafka`。
+- `delaySlotCount`、`delaySlotDuration`：延迟槽数量与时长。
+- `messageFormat` / `messageCodec`：`protobuf`（默认）、`json`、`sonic`、
+  `blob`。
+
+## Agent：`agent.toml`
+
+Agent 配置由 `cmd/arcentra-agent` 读取，描述如何连接控制平面以及如何执行任务。
+
+### `[grpc]`
+
+- `serverAddr`：控制平面 gRPC 地址（`host:port`）。
+- `token`：Agent 鉴权的 Bearer Token。
+- `readWriteTimeout`、`maxMsgSize`、`maxReconnectAttempts`。
+
+### `[agent]`
+
+- `mode`：`sandbox` 或 `baremetal`。
+- `id`、`name`、`description`：调度与审计使用的身份。
+- `interval`：心跳间隔（秒）。
+- `maxConcurrentJobs`、`jobTimeout`：并发与单任务超时。
+- `workspaceDir`、`tempDir`、`cacheDir`：本地工作目录。
+- `deniedCommands`：shell builtin 拒绝执行的命令列表。
+- `proxyUrl`：出网代理。
+- `[agent.labels]`：用于 StepRun 选择器的标签（如 `env`、`team`、`region`）。
+- `[agent.resourceLimits]`：CPU/内存声明。
+- `[agent.envVars]`：注入到任务的环境变量。
+- `[agent.cleanupPolicy]`：工作区保留策略（`max_size_gb`、`max_age_days`）。
+
+### `[agent.sandbox]`、`[agent.sandbox.containerd]`、`[agent.sandbox.kubernetes]`
+
+- `enable`、`runtime`：选择 `containerd` 或 `kubernetes`。
+- containerd：`network`、`unixSocket`、默认 `image`、资源限制。
+- kubernetes：目标 `namespace`、`podName`、`image`、资源限制。
+
+### 其他段
+
+Agent 与控制平面共用 metrics、log、Kafka、HTTP、Redis、taskQueue 等结构。
+默认 HTTP 端口 `:8081`、metrics `:8084`，日志文件为 `agent.LOG`。
+
+## 插件与 builtin：`plugins.toml`
+
+该文件提供 builtin 的默认 `args.config`，以及插件级配置。Step 级配置可覆盖
+这些默认值。
+
+### Builtin
+
+- `[builtins.shell]`：shell 路径、默认 `timeout`、`allowDangerous` 开关。
+- `[builtins.stdout]`：输出 `prefix` 与 `json` 开关。
+- `[builtins.artifacts]`、`[builtins.reports]`、`[builtins.scm]`：预留。
+
+### 插件
+
+- `[plugins.git]`：`gitPath`、默认 `userName` / `userEmail`、shallow 克隆设置。
+- `[plugins.svn]`：`svnPath`、默认凭证、`trustServerCert`、`nonInteractive`。
+
+## 配置建议
+
+- 把示例文件作为参考，真实配置维护在受密钥管理保护的位置。
+- Kafka 启用 SASL/TLS 时优先使用 `SASL_SSL`，凭证不要进入仓库。
+- 多租户部署中给每个 Agent 唯一的 `id`，并为 `[agent.labels]` 提供足够的属性
+  以驱动调度决策。
+- 数据库、Redis、Kafka 的版本应与生产环境保持一致，并尽量在 CI 中验证。

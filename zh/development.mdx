@@ -1,94 +1,154 @@
 ---
-title: 'Development'
-description: 'Preview changes locally to update your docs'
+title: "开发"
+description: "构建、生成、Lint、测试与发布 Arcentra。"
 ---
 
-<Info>
-  **Prerequisites**:
-  - Node.js version 19 or higher
-  - A docs repository with a `docs.json` file
-</Info>
+本页介绍 Arcentra 仓库的开发流程。下列命令默认在
+[`arcentra`](https://github.com/arcentrix/arcentra) 仓库根目录执行。
 
-Follow these steps to install and run Mintlify on your operating system.
+## 工具链
 
-<Steps>
-<Step title="Install the Mintlify CLI">
+- **Go** 1.25 及以上（与 `go.mod` 一致）。
+- **Buf**：Protobuf / gRPC 代码生成。`make buf-install` 会按需安装。
+- **Wire**：编译期依赖注入。`make wire-install` 会按需安装。
+- **golangci-lint v2**：`make lint` 会自动安装到 `bin/`。
+- **staticcheck**（可选）：`make staticcheck` 会安装并执行。
+- **addlicense**（可选）：`make addlicense` 为 Go 文件添加 Apache 2.0 头。
+- **Docker**（可选）：`make docker-build`、`make docker-buildx` 必备。
 
-```bash
-npm i -g mint
-```
-</Step>
+## 常用 Make 目标
 
-<Step title="Preview locally">
+`make help` 会列出全部目标，最常用的是：
 
-Navigate to your docs directory where your `docs.json` file is located, and run the following command:
+| 目标 | 作用 |
+| --- | --- |
+| `make deps` | `go mod tidy` 与 `go mod verify` |
+| `make codegen` | 跑全部代码生成（Buf + 两个二进制的 Wire） |
+| `make buf` | 生成 gRPC / protobuf 代码 |
+| `make wire TARGET=arcentra` | 生成控制平面的 Wire 绑定 |
+| `make wire TARGET=arcentra-agent` | 生成 Agent 的 Wire 绑定 |
+| `make build TARGET=<name>` | 编译 `cmd/<name>` 下的二进制 |
+| `make build-target TARGET=<name>` | 加 `-trimpath -s -w` 的发布构建（CI/Docker） |
+| `make run` | 本地运行控制平面 |
+| `make lint` | 安装 golangci-lint v2 并执行 |
+| `make fmt-check` | 校验格式（排除生成代码） |
+| `make test` | `go test -race -count=1 ./...` |
+| `make staticcheck` | 跑 staticcheck |
+| `make docker-build` | 通过 BuildKit 构建镜像 |
+| `make docker-buildx` | 多架构（`linux/arm64,linux/amd64`）构建并推送 |
+| `make addlicense` | 为 Go 文件添加 license header |
+| `make version` | 输出版本号、分支、commit、构建时间 |
+| `make version-tag` | 创建带注释的 `vX.Y.Z.W` git tag |
 
-```bash
-mint dev
-```
+仓库默认包含两个二进制：`arcentra`（控制平面）与 `arcentra-agent`。`cmd/`
+下的任何子目录都可通过 `make build TARGET=<dirname>` 编译。
 
-A local preview of your documentation will be available at `http://localhost:3000`.
+## 代码生成
 
-</Step>
-</Steps>
+构建系统串联两个生成器：
 
-## Custom ports
+- **Buf** 在 `api/<service>/v1` 下生成 Go message 与 gRPC 代码。
+- **Wire** 在 `cmd/arcentra/` 与 `cmd/arcentra-agent/` 下生成 `wire_gen.go`。
 
-By default, Mintlify uses port 3000. You can customize the port Mintlify runs on by using the `--port` flag. For example, to run Mintlify on port 3333, use this command:
+修改任何 `.proto` 或 `wire.go` 后请执行 `make codegen`。
 
-```bash
-mint dev --port 3333
-```
-
-If you attempt to run Mintlify on a port that's already in use, it will use the next available port:
-
-```md
-Port 3000 is already in use. Trying 3001 instead.
-```
-
-## Mintlify versions
-
-Please note that each CLI release is associated with a specific version of Mintlify. If your local preview does not align with the production version, please update the CLI:
-
-```bash
-npm mint update
-```
-
-## Validating links
-
-The CLI can assist with validating links in your documentation. To identify any broken links, use the following command:
+## 测试
 
 ```bash
-mint broken-links
+make test
 ```
 
-## Deployment
+会以开启 race detector 的方式运行全部 Go 测试。需要单独跑某个包时，可以直接
+`go test -race ./internal/path/...`。
 
-If the deployment is successful, you should see the following:
+## 开发期配置
 
-<Frame>
-  <img src="/images/checks-passed.png" alt="Screenshot of a deployment confirmation message that says All checks have passed." style={{ borderRadius: '0.5rem' }} />
-</Frame>
+`conf.d/` 下的示例配置面向本地开发场景：
 
-## Code formatting
+- `conf.d/config.toml`：控制平面。
+- `conf.d/agent.toml`：Agent。
+- `conf.d/plugins.toml`：插件与 builtin。
 
-We suggest using extensions on your IDE to recognize and format MDX. If you're a VSCode user, consider the [MDX VSCode extension](https://marketplace.visualstudio.com/items?itemName=unifiedjs.vscode-mdx) for syntax highlighting, and [Prettier](https://marketplace.visualstudio.com/items?itemName=esbenp.prettier-vscode) for code formatting.
+`make run` 会基于这些默认配置启动控制平面，也可以使用
+`go run ./cmd/arcentra -conf <path>` 与
+`go run ./cmd/arcentra-agent -conf <path>` 直接运行。
 
-## Troubleshooting
+每个段的字段说明见 [配置](/zh/configuration)。
 
-<AccordionGroup>
-  <Accordion title='Error: Could not load the "sharp" module using the darwin-arm64 runtime'>
+## 版本与发布
 
-    This may be due to an outdated version of node. Try the following:
-    1. Remove the currently-installed version of the CLI: `npm remove -g mint`
-    2. Upgrade to Node v19 or higher.
-    3. Reinstall the CLI: `npm i -g mint`
-  </Accordion>
+Arcentra 使用 **YY.Major.Minor.Patch** 四段式版本号：
 
-  <Accordion title="Issue: Encountering an unknown error">
-  
-    Solution: Go to the root of your device and delete the `~/.mintlify` folder. Then run `mint dev` again.
-  </Accordion>
-</AccordionGroup>
+- `YY`：2 位年份（`25` 代表 2025，`26` 代表 2026）。
+- `Major`：架构变更或破坏式 API 升级。
+- `Minor`：向后兼容的新功能。
+- `Patch`：Bug 修复或小改动。
 
-Curious about what changed in the latest CLI version? Check out the [CLI changelog](https://www.npmjs.com/package/mintlify?activeTab=versions).
+示例：
+
+```
+25.0.0.0  -> 2025 年初始版本
+25.0.0.1  -> Bug 修复
+25.0.1.0  -> 新功能（向后兼容）
+25.1.0.0  -> 重大更新
+26.0.0.0  -> 2026 年首个版本
+```
+
+### 构建时选择版本
+
+`Makefile` 按以下优先级解析版本：
+
+1. 环境变量 `VERSION`。
+2. 仓库根目录的 `VERSION` 文件。
+3. 精确匹配的 git tag（去掉前缀 `v`）。
+4. 缺省值：当前 2 位年份 + `.0.0.0`。
+
+```bash
+# 显式指定
+VERSION=25.1.2.3 make build TARGET=arcentra
+
+# 通过 VERSION 文件
+echo -n "25.1.2.3" > VERSION
+make build TARGET=arcentra
+```
+
+### 打 Tag
+
+```bash
+export VERSION=25.1.2.3
+make version-tag
+git push origin v$VERSION
+```
+
+Tag 命名约定为 `vYY.Major.Minor.Patch`。
+
+### 在代码中读取版本
+
+```go
+import "github.com/arcentrix/arcentra/pkg/version"
+
+v := version.GetVersion()
+fmt.Println(v.Version)
+
+parsed, err := version.GetParsedVersion()
+if err != nil {
+    log.Fatal(err)
+}
+fmt.Printf("year=20%02d major=%d minor=%d patch=%d\n",
+    parsed.Year, parsed.Major, parsed.Minor, parsed.Patch)
+```
+
+## 贡献
+
+完整流程参见
+[`CONTRIBUTING.md`](https://github.com/arcentrix/arcentra/blob/main/CONTRIBUTING.md)
+（中文版 `CONTRIBUTING_zh_CN.md`）。简要要求：
+
+1. 从 `main` 分支拉出特性分支。
+2. 提交 PR 前在本地跑 `make codegen`、`make lint`、`make test`。
+3. 任何对外可见的改动同步更新本文档站点。
+4. 关联 Issue，并遵循项目的 commit 与 PR 约定。
+
+安全相关问题请按
+[`SECURITY.md`](https://github.com/arcentrix/arcentra/blob/main/SECURITY.md)
+中的私有渠道反馈。

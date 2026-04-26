@@ -1,0 +1,242 @@
+---
+title: "Pipelines"
+description: "Pipeline model, DSL, run lifecycle, and HTTP API."
+---
+
+Pipelines are the primary unit of automation in Arcentra. A pipeline is a
+versioned definition that describes how to build, test, deliver, or operate a
+project. Each execution of a pipeline produces a `PipelineRun`.
+
+## Concepts
+
+- **Pipeline** — versioned definition that lives next to a project. It can be
+  stored inline or backed by a Git repository through a `pipeline.yaml` file.
+- **Stage** — an ordered group of jobs. A pipeline may declare multiple
+  stages or use the `jobs` shorthand, in which case Arcentra wraps the jobs
+  in a default stage.
+- **Job** — a unit of work scheduled to a single agent. Jobs declare the
+  steps to run and any conditions or matrix expansion.
+- **Step** — the atomic action. A step is either a builtin (such as `shell`)
+  or a plugin invocation through `uses + action + args`.
+- **PipelineRun / JobRun / StepRun** — runtime objects with their own state,
+  status, logs, artifacts, and timing.
+- **Trigger** — `manual`, `cron`, or `event` (webhook). Triggers can be
+  combined with approval gates.
+
+## Statuses
+
+| Object | Statuses |
+| --- | --- |
+| PipelineRun | `pending`, `running`, `success`, `failed`, `cancelled`, `paused`, `partial` |
+| JobRun | `pending`, `queued`, `running`, `success`, `failed`, `cancelled` |
+| StepRun | `pending`, `queued`, `running`, `success`, `failed`, `cancelled`, `timeout`, `skipped` |
+
+## Pipeline definition
+
+Pipelines are defined as structured specs. The two supported shapes are:
+
+```yaml
+namespace: demo.pipeline
+version: v1
+stages:
+  - name: build
+    jobs:
+      - name: build-go
+        steps:
+          - name: checkout
+            uses: actions/git-checkout@v1
+            args:
+              ref: ${{ trigger.ref }}
+          - name: compile
+            uses: actions/go-build@v1
+            args:
+              go_version: "1.25"
+```
+
+The `jobs`-only shorthand omits the `stages` wrapper:
+
+```yaml
+namespace: demo.pipeline
+version: v1
+jobs:
+  - name: build
+    steps:
+      - name: compile
+        uses: actions/go-build@v1
+        args:
+          go_version: "1.25"
+```
+
+Both shapes can declare `Source`, `Approval`, `Target`, `Notify`, and
+`Triggers` blocks. See the upstream pipeline docs in the source repository
+for the full schema and DSL reference.
+
+## HTTP API
+
+The HTTP surface lives under `/api/v1/pipelines` on the control plane.
+
+### Authentication
+
+All endpoints require a bearer token:
+
+```
+Authorization: Bearer <token>
+```
+
+Requests and responses use `application/json`.
+
+### Response envelope
+
+Successful responses with a body:
+
+```json
+{
+  "code": 0,
+  "msg": "success",
+  "detail": {},
+  "timestamp": 1730000000
+}
+```
+
+Successful responses without a body:
+
+```json
+{
+  "code": 0,
+  "msg": "success",
+  "timestamp": 1730000000
+}
+```
+
+Errors:
+
+```json
+{
+  "code": 400,
+  "errMsg": "xxx",
+  "path": "/api/v1/pipelines/...",
+  "timestamp": 1730000000
+}
+```
+
+### Endpoints
+
+#### Pipeline management
+
+- `POST /api/v1/pipelines`
+- `PUT /api/v1/pipelines/:pipelineId`
+- `GET /api/v1/pipelines/:pipelineId`
+- `GET /api/v1/pipelines`
+- `DELETE /api/v1/pipelines/:pipelineId`
+
+#### Definition
+
+- `GET /api/v1/pipelines/:pipelineId/spec`
+- `POST /api/v1/pipelines/:pipelineId/spec/validate`
+- `POST /api/v1/pipelines/:pipelineId/spec/save`
+
+#### Run control
+
+- `POST /api/v1/pipelines/:pipelineId/trigger`
+- `GET /api/v1/pipelines/:pipelineId/runs`
+- `GET /api/v1/pipelines/runs/:runId`
+- `POST /api/v1/pipelines/:pipelineId/runs/:runId/stop`
+- `POST /api/v1/pipelines/:pipelineId/runs/:runId/pause`
+- `POST /api/v1/pipelines/:pipelineId/runs/:runId/resume`
+
+### Common request shapes
+
+#### Create pipeline
+
+```json
+{
+  "projectId": "proj_xxx",
+  "name": "build-main",
+  "description": "main branch build",
+  "repoUrl": "https://github.com/org/repo.git",
+  "defaultBranch": "main",
+  "pipelineFilePath": ".arcentra/pipeline.yaml",
+  "saveMode": "pr",
+  "prTargetBranch": "main",
+  "metadata": { "owner": "devops" },
+  "createdBy": "user_xxx"
+}
+```
+
+#### Validate definition
+
+```json
+{
+  "spec": {
+    "namespace": "demo.pipeline",
+    "version": "v1",
+    "jobs": [
+      {
+        "name": "build",
+        "steps": [
+          {
+            "name": "compile",
+            "uses": "actions/go-build@v1",
+            "args": { "go_version": "1.25" }
+          }
+        ]
+      }
+    ]
+  },
+  "format": "yaml"
+}
+```
+
+#### Save definition
+
+```json
+{
+  "spec": { /* same shape as validate */ },
+  "format": "yaml",
+  "expectedHeadCommitSha": "abc123",
+  "commitMessage": "update pipeline",
+  "requestId": "req-20260302-001",
+  "editor": "user_xxx"
+}
+```
+
+<Note>
+  Definition endpoints accept structured `spec` only. The legacy `content`
+  text field has been removed.
+</Note>
+
+#### Trigger pipeline
+
+```json
+{
+  "variables": { "env": "prod" },
+  "triggeredBy": "user_xxx",
+  "requestId": "trigger-001"
+}
+```
+
+#### Pause / resume / stop
+
+```json
+{
+  "reason": "manual operation",
+  "operator": "user_xxx"
+}
+```
+
+### Enumerations
+
+- `saveMode`: `direct`, `pr`
+- `format`: `json`, `yaml`, `yml`
+- Pipeline status: `pending`, `running`, `success`, `failed`, `cancelled`,
+  `paused`
+
+## Realtime updates
+
+Live pipeline, job, and step updates are exposed through:
+
+- A WebSocket gateway at `GET /api/v1/ws` for log and status subscriptions.
+- gRPC streaming services (`stream.v1`) for server-to-server integrations.
+
+See the [API reference](/en/api-reference/introduction) for the WebSocket
+message envelope and the gRPC stream catalog.

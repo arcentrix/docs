@@ -1,33 +1,210 @@
 ---
-title: 'Introduction'
-description: 'Example section for showcasing API endpoints'
+title: "API reference"
+description: "Overview of Arcentra's gRPC, HTTP, and WebSocket surfaces."
 ---
 
-<Note>
-  If you're not looking to build API reference documentation, you can delete
-  this section by removing the api-reference folder.
-</Note>
+Arcentra exposes three complementary APIs:
 
-## Welcome
+- **gRPC** — primary control plane / agent contract and the recommended
+  surface for service-to-service integrations.
+- **HTTP/JSON** — user-facing API for pipelines, runs, identity, and
+  settings; used by the UI and by external automation.
+- **WebSocket** — push channels for live logs and status updates.
 
-There are two ways to build API documentation: [OpenAPI](https://mintlify.com/docs/api-playground/openapi/setup) and [MDX components](https://mintlify.com/docs/api-playground/mdx/configuration). For the starter kit, we are using the following OpenAPI specification.
+## gRPC services
 
-<Card
-  title="Plant Store Endpoints"
-  icon="leaf"
-  href="https://github.com/mintlify/starter/blob/main/api-reference/openapi.json"
->
-  View the OpenAPI specification file
-</Card>
+The proto definitions live in the
+[`api/`](https://github.com/arcentrix/arcentra/tree/main/api) directory and
+are managed with [Buf](https://buf.build). They are split into five service
+modules under `*/v1`:
 
-## Authentication
+| Service | Module | Responsibility |
+| --- | --- | --- |
+| Agent | `agent/v1` | Agent lifecycle, step run dispatch, control channel |
+| Gateway | `gateway/v1` | Data-plane log and event ingestion |
+| Pipeline | `pipeline/v1` | Pipeline CRUD, trigger, and run management |
+| StepRun | `steprun/v1` | StepRun CRUD, retries, and artifact listing |
+| Stream | `stream/v1` | Server-side streaming for status and events |
 
-All API endpoints are authenticated using Bearer tokens and picked up from the specification file.
+### Agent service highlights
+
+- `Heartbeat`, `Register`, `Unregister` — agent lifecycle.
+- `FetchStepRun` — agents pull step runs that match their label selector.
+- `ReportStepRunStatus`, `CancelStepRun` — bidirectional status flow.
+- `UpdateLabels` — dynamic label updates without restart.
+- `Connect` — bidirectional control-plane channel between agent and gateway.
+
+### Gateway service highlights
+
+- `PushLogs` — high-throughput, batched, lossy log stream.
+- `PushEvents` — reliable, idempotent event stream with retry and partial
+  acceptance.
+
+### Pipeline service highlights
+
+CRUD plus run control: `CreatePipeline`, `UpdatePipeline`, `GetPipeline`,
+`ListPipelines`, `DeletePipeline`, `TriggerPipeline`, `StopPipeline`,
+`GetPipelineRun`, `ListPipelineRuns`. Triggers cover manual, cron/schedule,
+and event/webhook flows.
+
+### StepRun service highlights
+
+CRUD plus execution control: `CreateStepRun`, `GetStepRun`, `ListStepRuns`,
+`UpdateStepRun`, `DeleteStepRun`, `CancelStepRun`, `RetryStepRun`,
+`ListStepRunArtifacts`. Steps support plugin actions, retry policies,
+artifact collection, label-based routing, and `when` conditional
+expressions.
+
+### Stream service highlights
+
+- `StreamStepRunStatus`, `StreamJobStatus`, `StreamPipelineStatus` — live
+  status pushes.
+- `AgentChannel` — bidirectional agent/server channel.
+- `StreamAgentStatus`, `StreamEvents` — agent presence and system events.
+
+Event types follow the pattern `arcentra.<object>.<lifecycle>`, for example
+`arcentra.step.started` or `arcentra.pipeline.failed`.
+
+### Generating gRPC clients
+
+Clients are generated with Buf. From the project root:
+
+```bash
+make buf
+# or, directly inside the api directory
+cd api && buf generate
+```
+
+## HTTP API
+
+The HTTP API is hosted by the control plane and listens on `:8080` by
+default. All endpoints require a bearer token:
+
+```
+Authorization: Bearer <token>
+```
+
+Responses follow a uniform envelope with `code`, `msg`, optional `detail`,
+and a `timestamp` field. Errors use `errMsg` and `path` instead of `detail`.
+
+The pipeline endpoints under `/api/v1/pipelines/...` are the most commonly
+used; see [Pipelines](/en/pipelines) for request/response shapes.
+
+Additional HTTP surfaces include:
+
+- **Identity and settings** — user, role, and tenant management.
+- **Projects and uploads** — project CRUD and asset uploads.
+- **Agents** — agent inventory and label inspection.
+
+For the canonical list of endpoints, refer to the routes registered in
+[`internal/control`](https://github.com/arcentrix/arcentra/tree/main/internal/control).
+
+## WebSocket gateway
+
+The WebSocket gateway is exposed at `GET /api/v1/ws` (the WebSocket
+handshake is an HTTP `GET`).
+
+### Request envelope
 
 ```json
-"security": [
-  {
-    "bearerAuth": []
+{
+  "channel": "channel_log | channel_status",
+  "action": "subscribe | unsubscribe",
+  "params": {
+    "pipelineId": "string",
+    "jobId": "string",
+    "stepRunId": "string"
   }
-]
+}
+```
+
+- `channel` is required (`channel_log` or `channel_status`).
+- `action` defaults to `subscribe`.
+- `params` is required and must include `pipelineId`, `jobId`, and
+  `stepRunId`.
+
+### Response envelope
+
+```json
+{
+  "channel": "channel_log | channel_status",
+  "type": "string",
+  "params": { "pipelineId": "...", "jobId": "...", "stepRunId": "..." },
+  "data": {},
+  "error": "string",
+  "message": "string"
+}
+```
+
+### Log channel (`channel_log`)
+
+| `type` | `data` |
+| --- | --- |
+| `subscribed` | `null` |
+| `log_chunk` | `Log[]`, up to 200 entries per batch |
+| `history_done` | `null` |
+| `log` | a single `Log` |
+| `unsubscribed` | `null` |
+| `error` | `null` (the message is in the `error` field) |
+
+A `Log` entry has the following fields:
+
+| Field | Type | Required | Description |
+| --- | --- | --- | --- |
+| `step_run_id` | string | yes | Step run identifier |
+| `timestamp` | int64 | yes | Unix timestamp in seconds |
+| `line_number` | int32 | yes | 1-based line number |
+| `level` | string | no | `info`, `warn`, `error`, ... |
+| `content` | string | no | Log message |
+| `stream` | string | no | `stdout` or `stderr` |
+| `plugin_name` | string | no | Originating plugin |
+| `agent_id` | string | no | Reporting agent |
+
+### Status channel (`channel_status`)
+
+- `status_snapshot` — initial snapshot from the database (`t_step_run`).
+- `status` — live Kafka events while the step run is active (status `1/2/3`).
+- `unsubscribed` — acknowledgement of unsubscribe.
+- `error` — error envelope.
+
+Once a step run finishes, only the snapshot is sent and no Kafka events are
+forwarded.
+
+#### Snapshot example
+
+```json
+{
+  "stepRunId": "...",
+  "pipelineId": "...",
+  "jobId": "...",
+  "status": 3,
+  "startTime": "...",
+  "endTime": null,
+  "duration": 1234
+}
+```
+
+#### Live event example
+
+```json
+{
+  "pipelineId": "...",
+  "jobId": "...",
+  "stepRunId": "...",
+  "eventType": "arcentra.step.started",
+  "status": "started",
+  "subject": "pipeline:xxx:job:yyy:step:zzz",
+  "raw": { "type": "...", "data": {}, "subject": "..." }
+}
+```
+
+### Error example
+
+```json
+{
+  "channel": "channel_log",
+  "type": "error",
+  "params": { "pipelineId": "...", "jobId": "...", "stepRunId": "..." },
+  "error": "pipelineId, jobId and stepRunId are required"
+}
 ```

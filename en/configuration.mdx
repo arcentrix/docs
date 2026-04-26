@@ -1,0 +1,173 @@
+---
+title: "Configuration"
+description: "Reference for config.toml, agent.toml, and plugins.toml."
+---
+
+Arcentra ships three example configuration files under `conf.d/`:
+
+| File | Used by | Default flag |
+| --- | --- | --- |
+| `conf.d/config.toml` | Control plane | `-conf` |
+| `conf.d/agent.toml` | Agent | `-conf` |
+| `conf.d/plugins.toml` | Control plane | `-plugin-conf` |
+
+<Warning>
+  The example files include placeholder secrets (JWT key, Kafka SASL password,
+  database credentials). Always replace them before running outside a local
+  developer environment, and keep them out of source control or use a secret
+  manager.
+</Warning>
+
+## Control plane: `config.toml`
+
+The control plane configuration is read by `cmd/arcentra` and shared across
+HTTP, gRPC, scheduling, and storage subsystems.
+
+### `[metrics]`
+
+Prometheus-compatible metrics endpoint.
+
+| Key | Purpose | Default |
+| --- | --- | --- |
+| `enable` | Enable or disable the metrics server | `true` |
+| `host` / `port` | Listen address | `0.0.0.0:8082` |
+| `path` | Scrape path | `/metrics` |
+
+### `[trace]` and `[trace.batch]`
+
+OpenTelemetry tracing.
+
+- `exporterType`: `jaeger`, `otlp-grpc`, `otlp-http`, or `none`.
+- `endpoint`, `insecure`, `headers`: configure the exporter target.
+- `[trace.batch]` controls queue size and export timeouts; raise
+  `exportTimeout` if you see `context deadline exceeded`.
+
+### `[events]` and `[messageQueue.kafka]`
+
+CloudEvents publishing and the Kafka transport. Important keys:
+
+- `[events].sourcePrefix` — prefix used for event sources.
+- `[messageQueue.kafka].bootstrapServers` — Kafka brokers.
+- `securityProtocol` — `PLAINTEXT`, `SSL`, `SASL_PLAINTEXT`, `SASL_SSL`.
+- `[messageQueue.kafka.sasl]` — SASL `mechanism`, `username`, `password`.
+- `[messageQueue.kafka.ssl]` — TLS material when `SSL` is enabled.
+
+### `[log]` and `[logger.*]`
+
+Two complementary logging modes:
+
+- `[log]` — single-output logger (`stdout`, `file`, or `kafka`) with rotation
+  by time and size.
+- `[logger.*]` — multi-category logger initialized via `logger.InitMulti`,
+  with per-category outputs (HTTP, plugin, cron, and so on).
+
+### `[grpc]` and `[http]`
+
+| Section | Notable keys |
+| --- | --- |
+| `[grpc]` | `host`, `port`, `maxConnections`, `readWriteTimeout` |
+| `[http]` | `host`, `port`, `accessLog`, read/write/idle/shutdown timeouts, `bodyLimit` |
+
+`[http.auth]` controls JWT issuance:
+
+- `accessExpire` and `refreshExpire` accept duration strings (`60m`, `1h`,
+  `7d`); plain numbers fall back to minutes.
+- `secretKey` must be rotated before any non-local deployment.
+
+### `[database]`
+
+Choose `mysql` or `sqlite` via `driver`.
+
+- `[database.mysql].dsn` — full DSN with charset and `parseTime=True`.
+- `[database.sqlite].dsn` — file path; SQLite is unsuitable for production
+  control-plane usage.
+- `[database.options]` — connection pool size, max lifetime/idletime, and SQL
+  logging (`output`).
+
+### `[redis]`
+
+Single, cluster, or sentinel modes.
+
+- `mode` — `single`, `cluster`, or `sentinel`.
+- `address` — single host, comma-separated cluster endpoints, or sentinel
+  addresses.
+- TLS, sentinel master and credentials, and `maxRedirects` are commented out
+  in the defaults; uncomment as needed.
+
+### `[taskQueue]`
+
+Task queue configuration for delayed jobs.
+
+- `provider` — `kafka` is the supported default.
+- `delaySlotCount` and `delaySlotDuration` — control delayed-execution slots.
+- `messageFormat` and `messageCodec` — `protobuf`, `json`, `sonic`, or `blob`.
+
+## Agent: `agent.toml`
+
+The agent file is read by `cmd/arcentra-agent` and connects each agent to the
+control plane.
+
+### `[grpc]`
+
+- `serverAddr` — control-plane gRPC address (`host:port`).
+- `token` — bearer token for agent authentication.
+- `readWriteTimeout`, `maxMsgSize`, `maxReconnectAttempts`.
+
+### `[agent]`
+
+- `mode` — `sandbox` or `baremetal`.
+- `id`, `name`, `description` — identity for scheduling and audit.
+- `interval` — heartbeat interval, in seconds.
+- `maxConcurrentJobs`, `jobTimeout` — concurrency budget and per-job timeout.
+- `workspaceDir`, `tempDir`, `cacheDir` — local working directories.
+- `deniedCommands` — commands the shell builtin must refuse.
+- `proxyUrl` — outbound proxy.
+- `[agent.labels]` — arbitrary key/value labels used by step run selectors
+  (for example `env`, `team`, `region`).
+- `[agent.resourceLimits]` — declared CPU/memory budgets.
+- `[agent.envVars]` — environment variables injected into jobs.
+- `[agent.cleanupPolicy]` — workspace retention (`max_size_gb`,
+  `max_age_days`).
+
+### `[agent.sandbox]`, `[agent.sandbox.containerd]`, `[agent.sandbox.kubernetes]`
+
+- `enable` and `runtime` — switch between `containerd` and `kubernetes`.
+- containerd: `network`, `unixSocket`, default `image`, and resource limits.
+- kubernetes: target `namespace`, `podName`, `image`, and resource limits.
+
+### Other sections
+
+The agent shares the metrics, log, Kafka, HTTP, Redis, and task queue layout
+with the control plane. The HTTP server defaults to `:8081`, metrics to
+`:8084`, and the agent uses its own log file (`agent.LOG`).
+
+## Plugins and builtins: `plugins.toml`
+
+This file provides default `args.config` for builtins and per-plugin
+configuration. Step-level configuration overrides these defaults.
+
+### Builtins
+
+- `[builtins.shell]` — shell binary, default `timeout`, and
+  `allowDangerous` flag.
+- `[builtins.stdout]` — output `prefix` and `json` toggle.
+- `[builtins.artifacts]`, `[builtins.reports]`, `[builtins.scm]` — reserved
+  for future use.
+
+### Plugins
+
+- `[plugins.git]` — `gitPath`, default `userName` / `userEmail`, shallow
+  clone settings.
+- `[plugins.svn]` — `svnPath`, default credentials, `trustServerCert`,
+  `nonInteractive`.
+
+## Configuration tips
+
+- Keep the example files as a reference and maintain your real settings in a
+  separate, secret-managed location.
+- When using SASL or TLS for Kafka, prefer `SASL_SSL` and store credentials
+  outside the repository.
+- For multi-tenant deployments, give each agent a unique `id` and a label set
+  rich enough to drive scheduling decisions.
+- Match the database, Redis, and Kafka versions used in production with what
+  your CI environment validates against.

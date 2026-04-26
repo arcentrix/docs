@@ -1,97 +1,70 @@
 ---
-title: "Introduction"
-description: "Welcome to the new home for your documentation"
+title: "Arcentra"
+description: "A cloud-native CI/CD control plane for modern engineering systems."
 ---
 
-## Setting up
+Arcentra is an open-source CI/CD control plane built for teams that need
+**centralized orchestration with distributed execution**. It provides a stable
+architectural center for pipeline governance, agent scheduling, and long-term
+automation evolution.
 
-Get your documentation site up and running in minutes.
-
-<Card
-  title="Start here"
-  icon="rocket"
-  href="/quickstart"
-  horizontal
->
-  Follow our three step quickstart guide.
-</Card>
-
-## Make it yours
-
-Design a docs site that looks great and empowers your users.
+## Why Arcentra
 
 <Columns cols={2}>
-  <Card
-    title="Edit locally"
-    icon="pen-to-square"
-    href="/development"
-  >
-    Edit your docs locally and preview them in real time.
+  <Card title="Control plane first" icon="layer-group">
+    Model pipelines, runs, and state in one coherent system instead of stitching
+    together ad-hoc runners.
   </Card>
-  <Card
-    title="Customize your site"
-    icon="palette"
-    href="/essentials/settings"
-  >
-    Customize the design and colors of your site to match your brand.
+  <Card title="Distributed execution" icon="diagram-project">
+    Schedule work to heterogeneous agents and resource pools while keeping a
+    single, governed source of truth.
   </Card>
-    <Card
-    title="Set up navigation"
-    icon="map"
-    href="/essentials/navigation"
-  >
-    Organize your docs to help users find what they need and succeed with your product.
+  <Card title="Cloud-native architecture" icon="cloud">
+    Designed for Kubernetes and scalable runtime topologies, with gRPC and
+    HTTP/WebSocket APIs.
   </Card>
-  <Card
-    title="API documentation"
-    icon="terminal"
-    href="/api-reference/introduction"
-  >
-    Auto-generate API documentation from OpenAPI specifications.
+  <Card title="Governance ready" icon="shield-halved">
+    Built-in observability, auditability, and consistent workflow operations
+    across teams.
   </Card>
 </Columns>
 
-## Create beautiful pages
+## Core capabilities
 
-Everything you need to create world-class documentation.
+- **Pipeline orchestration** — multi-stage and DAG workflows; pipeline
+  definition decoupled from execution.
+- **Agent scheduling** — central control plane with distributed task execution
+  across mixed runtime environments.
+- **Observability and auditing** — unified logs, metrics, and trace-friendly
+  integration with end-to-end execution visibility.
+- **Plugin and action model** — interface-driven extension points (Git, SVN,
+  Apollo, Nacos, and custom plugins) for long-term platform evolution.
+
+## Where to next
 
 <Columns cols={2}>
-  <Card
-    title="Write with MDX"
-    icon="pen-fancy"
-    href="/essentials/markdown"
-  >
-    Use MDX to style your docs pages.
+  <Card title="Quickstart" icon="rocket" href="/en/quickstart">
+    Build the binaries, run the control plane, and connect your first agent.
   </Card>
-  <Card
-    title="Code samples"
-    icon="code"
-    href="/essentials/code"
-  >
-    Add sample code to demonstrate how to use your product.
+  <Card title="Architecture" icon="sitemap" href="/en/architecture">
+    Understand the control plane, agents, and shared pipeline runtime.
   </Card>
-  <Card
-    title="Images"
-    icon="image"
-    href="/essentials/images"
-  >
-    Display images and other media.
+  <Card title="Pipelines" icon="diagram-project" href="/en/pipelines">
+    Learn the pipeline model, DSL, and run lifecycle.
   </Card>
-  <Card
-    title="Reusable snippets"
-    icon="recycle"
-    href="/essentials/reusable-snippets"
-  >
-    Write once and reuse across your docs.
+  <Card title="Configuration" icon="sliders" href="/en/configuration">
+    Reference for `config.toml`, `agent.toml`, and `plugins.toml`.
+  </Card>
+  <Card title="API reference" icon="terminal" href="/en/api-reference/introduction">
+    Overview of the gRPC, HTTP, and WebSocket surfaces.
+  </Card>
+  <Card title="Development" icon="code" href="/en/development">
+    Build, test, generate code, and cut a release.
   </Card>
 </Columns>
 
-## Need inspiration?
+## Project status
 
-<Card
-  title="See complete examples"
-  icon="stars"
-  href="https://mintlify.com/customers"
->
-  Browse our showcase of exceptional documentation sites.
-</Card>
+Arcentra is under active development. Issues, feature proposals, and
+architecture discussions are welcome on
+[GitHub](https://github.com/arcentrix/arcentra).

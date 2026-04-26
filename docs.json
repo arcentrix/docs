@@ -13,7 +13,6 @@
       {
         "language": "en",
         "default": true,
-        "openapi": "/en/api-reference/openapi.json",
         "tabs": [
           {
             "tab": "Guides",
@@ -21,25 +20,22 @@
               {
                 "group": "Getting started",
                 "pages": [
-                  "index",
-                  "quickstart",
-                  "development"
+                  "en/index",
+                  "en/quickstart",
+                  "en/development"
                 ]
               },
               {
-                "group": "Customization",
+                "group": "Concepts",
                 "pages": [
-                  "essentials/settings",
-                  "essentials/navigation"
+                  "en/architecture",
+                  "en/pipelines"
                 ]
               },
               {
-                "group": "Writing content",
+                "group": "Operate",
                 "pages": [
-                  "essentials/markdown",
-                  "essentials/code",
-                  "essentials/images",
-                  "essentials/reusable-snippets"
+                  "en/configuration"
                 ]
               }
             ]
@@ -48,18 +44,9 @@
             "tab": "API reference",
             "groups": [
               {
-                "group": "API documentation",
+                "group": "Overview",
                 "pages": [
-                  "api-reference/introduction"
-                ]
-              },
-              {
-                "group": "Endpoint examples",
-                "pages": [
-                  "api-reference/endpoint/get",
-                  "api-reference/endpoint/create",
-                  "api-reference/endpoint/delete",
-                  "api-reference/endpoint/webhook"
+                  "en/api-reference/introduction"
                 ]
               }
             ]
@@ -68,7 +55,6 @@
       },
       {
         "language": "zh-Hans",
-        "openapi": "/zh/api-reference/openapi.json",
         "tabs": [
           {
             "tab": "指南",
@@ -82,19 +68,16 @@
                 ]
               },
               {
-                "group": "自定义",
+                "group": "核心概念",
                 "pages": [
-                  "zh/essentials/settings",
-                  "zh/essentials/navigation"
+                  "zh/architecture",
+                  "zh/pipelines"
                 ]
               },
               {
-                "group": "编写内容",
+                "group": "运维",
                 "pages": [
-                  "zh/essentials/markdown",
-                  "zh/essentials/code",
-                  "zh/essentials/images",
-                  "zh/essentials/reusable-snippets"
+                  "zh/configuration"
                 ]
               }
             ]
@@ -103,18 +86,9 @@
             "tab": "API 参考",
             "groups": [
               {
-                "group": "API 文档",
+                "group": "概览",
                 "pages": [
                   "zh/api-reference/introduction"
-                ]
-              },
-              {
-                "group": "接口示例",
-                "pages": [
-                  "zh/api-reference/endpoint/get",
-                  "zh/api-reference/endpoint/create",
-                  "zh/api-reference/endpoint/delete",
-                  "zh/api-reference/endpoint/webhook"
                 ]
               }
             ]
@@ -134,9 +108,9 @@
         "href": "mailto:support@arcentra.co"
       },
       {
-      "type": "github",
-      "href": "https://github.com/arcentrix/arcentra"
-    }
+        "type": "github",
+        "href": "https://github.com/arcentrix/arcentra"
+      }
     ]
   },
   "contextual": {

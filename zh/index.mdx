@@ -1,97 +1,61 @@
 ---
-title: "Introduction"
-description: "Welcome to the new home for your documentation"
+title: "Arcentra"
+description: "面向现代工程系统的云原生 CI/CD 控制平面。"
 ---
 
-## Setting up
+Arcentra 是一个开源的 CI/CD 控制平面，面向需要**集中编排、分布执行**的大规模
+工程体系。它不仅执行流水线，还为组织提供一个长期可演进的自动化架构中枢，
+统一承载流水线治理、Agent 调度与平台演进。
 
-Get your documentation site up and running in minutes.
-
-<Card
-  title="Start here"
-  icon="rocket"
-  href="/quickstart"
-  horizontal
->
-  Follow our three step quickstart guide.
-</Card>
-
-## Make it yours
-
-Design a docs site that looks great and empowers your users.
+## 为什么选择 Arcentra
 
 <Columns cols={2}>
-  <Card
-    title="Edit locally"
-    icon="pen-to-square"
-    href="/development"
-  >
-    Edit your docs locally and preview them in real time.
+  <Card title="控制平面优先" icon="layer-group">
+    在一个统一系统中建模流水线、执行过程与状态，避免拼装散乱的执行器。
   </Card>
-  <Card
-    title="Customize your site"
-    icon="palette"
-    href="/essentials/settings"
-  >
-    Customize the design and colors of your site to match your brand.
+  <Card title="分布式执行" icon="diagram-project">
+    将任务调度到异构 Agent 与资源池，同时保留集中的、被治理的事实来源。
   </Card>
-    <Card
-    title="Set up navigation"
-    icon="map"
-    href="/essentials/navigation"
-  >
-    Organize your docs to help users find what they need and succeed with your product.
+  <Card title="云原生架构" icon="cloud">
+    面向 Kubernetes 与横向扩展场景设计，提供 gRPC 与 HTTP/WebSocket 接口。
   </Card>
-  <Card
-    title="API documentation"
-    icon="terminal"
-    href="/api-reference/introduction"
-  >
-    Auto-generate API documentation from OpenAPI specifications.
+  <Card title="工程治理就绪" icon="shield-halved">
+    内建可观测性、审计能力与跨团队一致的运行规范。
   </Card>
 </Columns>
 
-## Create beautiful pages
+## 核心能力
 
-Everything you need to create world-class documentation.
+- **流水线编排**：支持多阶段与 DAG 流程，定义与执行解耦。
+- **Agent 调度**：中央控制、分布式执行，适配多种运行环境。
+- **可观测与审计**：统一接入日志、指标与链路，提供端到端执行可见性。
+- **插件与动作模型**：基于接口的扩展机制（Git、SVN、Apollo、Nacos 等）以
+  支撑平台长期演进。
+
+## 下一步
 
 <Columns cols={2}>
-  <Card
-    title="Write with MDX"
-    icon="pen-fancy"
-    href="/essentials/markdown"
-  >
-    Use MDX to style your docs pages.
+  <Card title="快速开始" icon="rocket" href="/zh/quickstart">
+    构建二进制、启动控制平面并连接第一个 Agent。
   </Card>
-  <Card
-    title="Code samples"
-    icon="code"
-    href="/essentials/code"
-  >
-    Add sample code to demonstrate how to use your product.
+  <Card title="架构" icon="sitemap" href="/zh/architecture">
+    了解控制平面、Agent 与共享流水线运行时之间的关系。
   </Card>
-  <Card
-    title="Images"
-    icon="image"
-    href="/essentials/images"
-  >
-    Display images and other media.
+  <Card title="流水线" icon="diagram-project" href="/zh/pipelines">
+    学习流水线模型、DSL 与运行生命周期。
   </Card>
-  <Card
-    title="Reusable snippets"
-    icon="recycle"
-    href="/essentials/reusable-snippets"
-  >
-    Write once and reuse across your docs.
+  <Card title="配置" icon="sliders" href="/zh/configuration">
+    `config.toml`、`agent.toml`、`plugins.toml` 的字段参考。
+  </Card>
+  <Card title="API 参考" icon="terminal" href="/zh/api-reference/introduction">
+    gRPC、HTTP 与 WebSocket 接口总览。
+  </Card>
+  <Card title="开发" icon="code" href="/zh/development">
+    构建、测试、生成代码并发布版本。
   </Card>
 </Columns>
 
-## Need inspiration?
+## 项目状态
 
-<Card
-  title="See complete examples"
-  icon="stars"
-  href="https://mintlify.com/customers"
->
-  Browse our showcase of exceptional documentation sites.
-</Card>
+Arcentra 处于活跃开发阶段，欢迎在
+[GitHub](https://github.com/arcentrix/arcentra) 提交 Issue、需求与架构讨论。
