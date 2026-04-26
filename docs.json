@@ -9,72 +9,127 @@
   },
   "favicon": "/favicon.svg",
   "navigation": {
-    "tabs": [
+  "global": {
+    "anchors": [
       {
-        "tab": "Guides",
-        "groups": [
-          {
-            "group": "Getting started",
-            "pages": [
-              "index",
-              "quickstart",
-              "development"
-            ]
-          },
-          {
-            "group": "Customization",
-            "pages": [
-              "essentials/settings",
-              "essentials/navigation"
-            ]
-          },
-          {
-            "group": "Writing content",
-            "pages": [
-              "essentials/markdown",
-              "essentials/code",
-              "essentials/images",
-              "essentials/reusable-snippets"
-            ]
-          }
-        ]
-      },
-      {
-        "tab": "API reference",
-        "groups": [
-          {
-            "group": "API documentation",
-            "pages": [
-              "api-reference/introduction"
-            ]
-          },
-          {
-            "group": "Endpoint examples",
-            "pages": [
-              "api-reference/endpoint/get",
-              "api-reference/endpoint/create",
-              "api-reference/endpoint/delete",
-              "api-reference/endpoint/webhook"
-            ]
-          }
-        ]
+        "anchor": "GitHub",
+        "href": "https://github.com/arcentrix/arcentra",
+        "icon": "github"
       }
-    ],
-    "global": {
-      "anchors": [
+    ]
+  },
+  "languages": [
+    {
+      "language": "en",
+      "default": true,
+      "tabs": [
         {
-          "anchor": "GitHub",
-          "href": "https://github.com/arcentrix/arcentra",
-          "icon": "github"
+          "tab": "Guides",
+          "groups": [
+            {
+              "group": "Getting started",
+              "pages": [
+                "index",
+                "quickstart",
+                "development"
+              ]
+            },
+            {
+              "group": "Customization",
+              "pages": [
+                "essentials/settings",
+                "essentials/navigation"
+              ]
+            },
+            {
+              "group": "Writing content",
+              "pages": [
+                "essentials/markdown",
+                "essentials/code",
+                "essentials/images",
+                "essentials/reusable-snippets"
+              ]
+            }
+          ]
         },
         {
-          "anchor": "Blog",
-          "href": "/blog",
-          "icon": "newspaper"
+          "tab": "API reference",
+          "groups": [
+            {
+              "group": "API documentation",
+              "pages": [
+                "api-reference/introduction"
+              ]
+            },
+            {
+              "group": "Endpoint examples",
+              "pages": [
+                "api-reference/endpoint/get",
+                "api-reference/endpoint/create",
+                "api-reference/endpoint/delete",
+                "api-reference/endpoint/webhook"
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "language": "zh-Hans",
+      "tabs": [
+        {
+          "tab": "指南",
+          "groups": [
+            {
+              "group": "快速开始",
+              "pages": [
+                "zh/index",
+                "zh/quickstart",
+                "zh/development"
+              ]
+            },
+            {
+              "group": "自定义",
+              "pages": [
+                "zh/essentials/settings",
+                "zh/essentials/navigation"
+              ]
+            },
+            {
+              "group": "编写内容",
+              "pages": [
+                "zh/essentials/markdown",
+                "zh/essentials/code",
+                "zh/essentials/images",
+                "zh/essentials/reusable-snippets"
+              ]
+            }
+          ]
+        },
+        {
+          "tab": "API 参考",
+          "groups": [
+            {
+              "group": "API 文档",
+              "pages": [
+                "zh/api-reference/introduction"
+              ]
+            },
+            {
+              "group": "接口示例",
+              "pages": [
+                "zh/api-reference/endpoint/get",
+                "zh/api-reference/endpoint/create",
+                "zh/api-reference/endpoint/delete",
+                "zh/api-reference/endpoint/webhook"
+              ]
+            }
+          ]
         }
       ]
     }
-  },
+  ]
+},
   "logo": {
     "light": "/logo/light.svg",
     "dark": "/logo/light.svg"
