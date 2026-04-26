@@ -1,11 +1,11 @@
 {
   "$schema": "https://mintlify.com/docs.json",
-  "theme": "mint",
-  "name": "Arcade Documentation",
+  "theme": "aspen",
+  "name": "Arcentra Documentation",
   "colors": {
-    "primary": "#16A34A",
-    "light": "#07C983",
-    "dark": "#15803D"
+    "primary": "#0A0A0A",
+    "light": "#111827",
+    "dark": "#F5F5F5"
   },
   "favicon": "/favicon.svg",
   "navigation": {
@@ -36,14 +36,6 @@
               "essentials/images",
               "essentials/reusable-snippets"
             ]
-          },
-          {
-            "group": "AI tools",
-            "pages": [
-              "ai-tools/cursor",
-              "ai-tools/claude-code",
-              "ai-tools/windsurf"
-            ]
           }
         ]
       },
@@ -71,13 +63,13 @@
     "global": {
       "anchors": [
         {
-          "anchor": "Documentation",
-          "href": "https://mintlify.com/docs",
-          "icon": "book-open-cover"
+          "anchor": "GitHub",
+          "href": "https://github.com/arcentrix/arcentra",
+          "icon": "github"
         },
         {
           "anchor": "Blog",
-          "href": "https://mintlify.com/blog",
+          "href": "/blog",
           "icon": "newspaper"
         }
       ]
@@ -85,38 +77,46 @@
   },
   "logo": {
     "light": "/logo/light.svg",
-    "dark": "/logo/dark.svg"
+    "dark": "/logo/light.svg"
   },
   "navbar": {
     "links": [
       {
         "label": "Support",
-        "href": "mailto:hi@mintlify.com"
+        "href": "mailto:support@arcentra.co"
       }
     ],
     "primary": {
       "type": "button",
-      "label": "Dashboard",
-      "href": "https://dashboard.mintlify.com"
+      "label": "Get Started",
+      "href": "/quickstart"
     }
   },
   "contextual": {
     "options": [
-     "copy",
-     "view",
-     "chatgpt",
-     "claude",
-     "perplexity",
-     "mcp",
-     "cursor",
-     "vscode"
-   ]
+      "copy",
+      "view",
+      "chatgpt",
+      "claude",
+      "perplexity",
+      "mcp",
+      "cursor",
+      "vscode"
+    ]
   },
   "footer": {
     "socials": {
-      "x": "https://x.com/mintlify",
-      "github": "https://github.com/observabil/arcade",
-      "linkedin": "https://linkedin.com/company/mintlify"
+      "github": "https://github.com/arcentrix/arcentra"
     }
+  },
+  "description": "Arcentra Documentation",
+  "appearance": {
+    "default": "system"
+  },
+  "seo": {
+    "indexing": "all"
+  },
+  "metadata": {
+    "timestamp": true
   }
 }
