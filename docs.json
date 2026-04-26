@@ -85,12 +85,7 @@
         "label": "Support",
         "href": "mailto:support@arcentra.co"
       }
-    ],
-    "primary": {
-      "type": "button",
-      "label": "Get Started",
-      "href": "/quickstart"
-    }
+    ]
   },
   "contextual": {
     "options": [
@@ -118,5 +113,8 @@
   },
   "metadata": {
     "timestamp": true
+  },
+  "interaction": {
+    "drilldown": true
   }
 }
