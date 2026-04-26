@@ -16,6 +16,7 @@
         "tabs": [
           {
             "tab": "Guides",
+            "openapi": "en/api-reference/openapi.json",
             "groups": [
               {
                 "group": "Getting started",
@@ -58,6 +59,7 @@
         "tabs": [
           {
             "tab": "指南",
+            "openapi": "en/api-reference/openapi.json",
             "groups": [
               {
                 "group": "快速开始",
